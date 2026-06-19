@@ -3,7 +3,7 @@ import { EventBus } from './core/EventBus'
 import { Vec3 } from './core/Vec3'
 import { GameState } from './core/GameState'
 import { Level } from './world/Level'
-import { generateDecor, Prop } from './world/Decor'
+import { generateDecor, Prop, Obstacle } from './world/Decor'
 import { CameraRig } from './camera/CameraRig'
 import { HeroState } from './hero/HeroState'
 import { HeroWeapon } from './hero/HeroWeapon'
@@ -59,6 +59,14 @@ let level!: Level
 let wm!: WaveManager
 let tm!: TowerManager
 let envMeshes: Mesh[] = []
+let obstacles: Obstacle[] = [] // solid props that block movement AND projectiles
+const PROJ_R = 0.2
+function inObstacle(x: number, z: number): boolean {
+  for (const o of obstacles) {
+    if (Math.abs(x - o.x) < o.hw + PROJ_R && Math.abs(z - o.z) < o.hd + PROJ_R) return true
+  }
+  return false
+}
 
 const rig = new CameraRig(scene, canvas, { x: 0, y: 0, z: 0 })
 const heroState = new HeroState(bus)
@@ -110,7 +118,8 @@ function buildEnvironment() {
   // scatter decor + obstacles to make the field feel like a real place
   const decor = generateDecor(level, mapIndex)
   for (const p of decor.props) buildProp(p)
-  heroCtrl.setObstacles(decor.obstacles)
+  obstacles = decor.obstacles
+  heroCtrl.setObstacles(obstacles)
 }
 
 let patchTick = 0
@@ -270,6 +279,10 @@ function updateProjectiles(dt: number) {
           }
         }
       }
+    }
+    // walls and other solid props stop projectiles (no damage)
+    if (projectiles[i] === p && inObstacle(p.mesh.position.x, p.mesh.position.z)) {
+      p.mesh.dispose(); projectiles.splice(i, 1)
     }
   }
 }
