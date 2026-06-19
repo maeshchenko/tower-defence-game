@@ -7,10 +7,8 @@ export class Enemy {
   readonly bounty: number
   readonly kind: EnemyKind
   private follower: PathFollower
-  private baseSpeed: number
   constructor(def: EnemyDef, path: Vec3[]) {
     this.hp = def.hp; this.bounty = def.bounty; this.kind = def.kind
-    this.baseSpeed = def.speed
     this.follower = new PathFollower(path, def.speed)
   }
   get pos(): Vec3 { return this.follower.pos }
