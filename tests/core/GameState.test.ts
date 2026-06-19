@@ -33,4 +33,18 @@ describe('GameState', () => {
     g.startWave(); g.endWave()
     expect(g.phase).toBe('gameover'); expect(over).toHaveBeenCalledWith({ victory: true })
   })
+  it('startWave is no-op when not in build phase', () => {
+    const g = make()
+    g.startWave() // wave = 1, phase = 'wave'
+    g.startWave() // second call from 'wave' phase — should be no-op
+    expect(g.wave).toBe(1)
+    expect(g.phase).toBe('wave')
+  })
+  it('endWave is no-op when in build phase', () => {
+    const bus = new EventBus(); const over = vi.fn(); bus.on('gameOver', over)
+    const g = new GameState(bus) // phase starts as 'build'
+    g.endWave() // called from 'build' — should be no-op
+    expect(g.phase).toBe('build')
+    expect(over).not.toHaveBeenCalled()
+  })
 })

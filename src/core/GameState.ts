@@ -26,9 +26,9 @@ export class GameState {
     this.bus.emit('baseHit', { remaining: this._lives })
     if (this._lives === 0) { this._phase = 'gameover'; this.bus.emit('gameOver', { victory: false }) }
   }
-  startWave() { if (this._phase !== 'gameover') { this._phase = 'wave'; this._wave += 1 } }
+  startWave() { if (this._phase === 'build') { this._phase = 'wave'; this._wave += 1 } }
   endWave() {
-    if (this._phase === 'gameover') return
+    if (this._phase !== 'wave') return
     if (this._wave >= this.totalWaves) { this._phase = 'gameover'; this.bus.emit('gameOver', { victory: true }) }
     else this._phase = 'build'
   }
