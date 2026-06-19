@@ -1,5 +1,6 @@
 import '@babylonjs/loaders/glTF'
 import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix } from '@babylonjs/core'
+import { AssetManager } from './rendering/AssetManager'
 import { EventBus } from './core/EventBus'
 import { Vec3 } from './core/Vec3'
 import { GameState } from './core/GameState'
@@ -23,6 +24,17 @@ import { BuildMenu } from './ui/BuildMenu'
 const canvas = document.getElementById('app') as HTMLCanvasElement
 const engine = new Engine(canvas, true)
 const scene = new Scene(engine)
+const assets = new AssetManager()
+
+function showLoading(): HTMLDivElement {
+  const el = document.createElement('div')
+  el.textContent = 'Загрузка моделей…'
+  el.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
+    'background:#10141c;color:#ffd24d;font-family:monospace;font-size:22px;z-index:50'
+  document.body.appendChild(el)
+  return el
+}
+
 const light = new HemisphericLight('l', new Vector3(0, 1, 0), scene)
 light.specular = new Color3(0, 0, 0) // no shiny glare on the ground
 
@@ -401,7 +413,13 @@ legend.innerHTML =
   `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/от лица`
 document.body.appendChild(legend)
 
-loadMap(0)
-engine.runRenderLoop(() => scene.render())
-addEventListener('resize', () => engine.resize())
-buildMenu.setVisible(true)
+async function boot() {
+  const overlay = showLoading()
+  await assets.preload(scene)
+  overlay.remove()
+  loadMap(0)
+  engine.runRenderLoop(() => scene.render())
+  addEventListener('resize', () => engine.resize())
+  buildMenu.setVisible(true)
+}
+boot()
