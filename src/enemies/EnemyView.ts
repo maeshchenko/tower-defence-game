@@ -1,26 +1,17 @@
-import { Scene, MeshBuilder, StandardMaterial, Color3, Mesh } from '@babylonjs/core'
+import { Scene, TransformNode } from '@babylonjs/core'
 import { Enemy } from './Enemy'
-
-const STYLE = {
-  normal: { color: new Color3(0.7,0.7,0.7), h: 1.6, d: 0.8 },
-  fast: { color: new Color3(0.9,0.85,0.2), h: 1.1, d: 0.6 },
-  tank: { color: new Color3(0.8,0.2,0.2), h: 1.8, d: 1.4 },
-}
+import { AssetManager } from '../rendering/AssetManager'
 
 export class EnemyView {
-  readonly mesh: Mesh
-  private readonly groundY: number
-  constructor(scene: Scene, private enemy: Enemy) {
-    const s = STYLE[enemy.kind]
-    this.groundY = s.h / 2
-    this.mesh = MeshBuilder.CreateCapsule('enemy', { height: s.h, radius: s.d/2 }, scene)
-    const m = new StandardMaterial('em', scene); m.diffuseColor = s.color
-    this.mesh.material = m
+  readonly mesh: TransformNode
+  constructor(_scene: Scene, assets: AssetManager, private enemy: Enemy) {
+    this.mesh = assets.instance('enemy.' + enemy.kind)
+    assets.playIdle(this.mesh)
     this.sync()
   }
   sync() {
     const p = this.enemy.pos
-    this.mesh.position.set(p.x, this.groundY, p.z)
+    this.mesh.position.set(p.x, 0, p.z)
   }
-  dispose() { this.mesh.dispose() }
+  dispose() { this.mesh.dispose(false, true) }
 }

@@ -364,7 +364,7 @@ scene.onBeforeRenderObservable.add(() => {
   heroState.tick(dt)
   updateProjectiles(dt)
   if (!over && state.phase === 'wave') {
-    for (const e of wm.update(dt)) views.set(e, new EnemyView(scene, e))
+    for (const e of wm.update(dt)) views.set(e, new EnemyView(scene, assets, e))
     for (const e of [...wm.active]) {
       e.update(dt)
       if (e.reachedBase) { state.damageBase(1); views.get(e)?.dispose(); views.delete(e); wm.remove(e); continue }
