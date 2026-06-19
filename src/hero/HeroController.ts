@@ -3,8 +3,12 @@ import { CameraRig } from '../camera/CameraRig'
 import { HeroWeapon } from './HeroWeapon'
 import { Enemy } from '../enemies/Enemy'
 import { EnemyView } from '../enemies/EnemyView'
+import { Vec3 } from '../core/Vec3'
 
 const SPEED = 1.5
+
+// a shot fired by the hero this frame (hit may be null on a miss)
+export interface HeroShot { from: Vec3; dir: Vec3; hit: Enemy | null; damage: number }
 
 export class HeroController {
   private keys = new Set<string>()
@@ -14,7 +18,7 @@ export class HeroController {
     addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()))
     addEventListener('pointerdown', () => { if (this.rig.mode === 'hero') this.wantFire = true })
   }
-  update(dt: number, enemies: { enemy: Enemy; view: EnemyView }[]): { hit: Enemy; damage: number } | null {
+  update(dt: number, enemies: { enemy: Enemy; view: EnemyView }[]): HeroShot | null {
     this.weapon.tick(dt)
     if (this.rig.mode !== 'hero') { this.wantFire = false; return null }
     const cam = this.rig.heroCam
@@ -31,11 +35,15 @@ export class HeroController {
       this.wantFire = false
       const dmg = this.weapon.fire()
       if (dmg != null) {
+        const aim = cam.getDirection(Vector3.Forward()).normalize()
+        const p = cam.position
+        let hit: Enemy | null = null
         const pick = this.scene.pick(this.scene.getEngine().getRenderWidth()/2, this.scene.getEngine().getRenderHeight()/2)
         if (pick?.hit && pick.pickedMesh) {
           const found = enemies.find((e) => e.view.mesh === pick.pickedMesh)
-          if (found) return { hit: found.enemy, damage: dmg }
+          if (found) hit = found.enemy
         }
+        return { from: { x: p.x, y: p.y, z: p.z }, dir: { x: aim.x, y: aim.y, z: aim.z }, hit, damage: dmg }
       }
     }
     return null

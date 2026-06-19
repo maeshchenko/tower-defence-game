@@ -3,8 +3,8 @@ import { Vec3 } from '../core/Vec3'
 
 export type ViewMode = 'top' | 'hero'
 
-// hero eye height above ground (quarter-size hero)
-const HERO_EYE = 0.425
+// hero eye height above ground
+const HERO_EYE = 1.1
 
 export class CameraRig {
   mode: ViewMode = 'top'
@@ -16,7 +16,7 @@ export class CameraRig {
     this.heroCam = new UniversalCamera('hero', new Vector3(heroStart.x, HERO_EYE, heroStart.z), scene)
     this.heroCam.checkCollisions = true
     this.heroCam.applyGravity = false
-    this.heroCam.ellipsoid = new Vector3(0.125, 0.2125, 0.125)
+    this.heroCam.ellipsoid = new Vector3(0.3, 0.55, 0.3)
     this.heroCam.minZ = 0.05
     scene.activeCamera = this.topCam
   }
