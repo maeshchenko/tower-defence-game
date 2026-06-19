@@ -1,5 +1,7 @@
 import '@babylonjs/loaders/glTF'
 import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode } from '@babylonjs/core'
+import { Environment } from './rendering/Environment'
+import { loadPreset, savePreset, nextPreset, resolveQuality, QualityPreset } from './rendering/Quality'
 import { AssetManager } from './rendering/AssetManager'
 import { ClipPlayer } from './rendering/ClipPlayer'
 import { Sfx } from './audio/Sfx'
@@ -50,6 +52,11 @@ for (const [x,z,w,d] of [[0,20,40,1],[0,-20,40,1],[20,0,1,40],[-20,0,1,40]] as c
   const wall = MeshBuilder.CreateBox('wall', { width: w, height: 4, depth: d }, scene)
   wall.position.set(x, 2, z); wall.checkCollisions = true; wall.isVisible = false
 }
+
+// stylized-toon render env (sun, soft shadows, glow, post-fx, fog) — quality-gated
+let quality: QualityPreset = loadPreset()
+const env = new Environment(scene, light, resolveQuality(quality))
+env.setReceiver(ground)
 
 const bus = new EventBus()
 const MAPS = Level.maps()
@@ -448,6 +455,12 @@ addEventListener('keydown', (e) => {
   }
   if (e.key === 'Enter') startNextWave()
   if (e.key === 'm' || e.key === 'M' || e.key === 'ь') sfx.muted = !sfx.muted // mute toggle
+  if (e.key === 'q' || e.key === 'Q' || e.key === 'й') {
+    quality = nextPreset(quality)
+    env.applyQuality(resolveQuality(quality))
+    savePreset(quality)
+    flash(`Качество: ${quality}`)
+  }
 
 })
 
@@ -534,7 +547,7 @@ const legend = document.createElement('div')
 legend.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font-family:monospace;font-size:13px;line-height:1.5;text-align:right;text-shadow:0 0 3px #000;pointer-events:none'
 legend.innerHTML =
   `cannon ${TOWER_DEFS.cannon[0].cost} · slow ${TOWER_DEFS.slow[0].cost} · sniper ${TOWER_DEFS.sniper[0].cost}<br>` +
-  `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/сзади (3-е лицо)`
+  `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/сзади (3-е лицо) · Q — качество`
 document.body.appendChild(legend)
 
 // --- front-end menus (title screen + restart) ---
