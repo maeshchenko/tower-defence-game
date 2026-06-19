@@ -20,9 +20,20 @@ export class CameraRig {
     this.heroCam.lowerBetaLimit = 0.25; this.heroCam.upperBetaLimit = 1.45 // keep above ground
     this.heroCam.lowerRadiusLimit = 5; this.heroCam.upperRadiusLimit = 16   // zoom range
     // movement is driven by HeroController (which owns the hero's world position),
-    // so disable the camera's own keyboard panning — drag/wheel only orbit & zoom.
+    // so disable the camera's own keyboard panning. Rotation is free mouse-look
+    // (below) and the wheel zooms via attachControl.
     this.heroCam.keysUp = []; this.heroCam.keysDown = []; this.heroCam.keysLeft = []; this.heroCam.keysRight = []
+    canvas.addEventListener('mousemove', this.onMouseLook)
     scene.activeCamera = this.topCam
+  }
+
+  // free mouse-look in third-person: moving the mouse orbits the camera around
+  // the hero (the hero then faces the camera's forward, via HeroController).
+  private onMouseLook = (e: MouseEvent) => {
+    if (this.mode !== 'hero' || document.pointerLockElement !== this.canvas) return
+    this.heroCam.alpha -= e.movementX * 0.0035
+    const b = this.heroCam.beta - e.movementY * 0.0035
+    this.heroCam.beta = Math.max(this.heroCam.lowerBetaLimit!, Math.min(this.heroCam.upperBetaLimit!, b))
   }
 
   // keep the follow camera centred on the hero (called every frame)
@@ -32,10 +43,12 @@ export class CameraRig {
       this.mode = 'hero'
       this.topCam.detachControl()
       this.scene.activeCamera = this.heroCam
-      this.heroCam.attachControl(this.canvas, true) // drag to orbit, wheel to zoom
+      this.heroCam.attachControl(this.canvas, true) // wheel zoom; rotation via mouse-look
+      this.canvas.requestPointerLock?.()
     } else {
       this.mode = 'top'
       this.heroCam.detachControl()
+      document.exitPointerLock?.()
       this.scene.activeCamera = this.topCam
       this.topCam.attachControl(this.canvas, true)
     }
