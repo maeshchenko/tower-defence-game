@@ -1,4 +1,4 @@
-import { Scene, TransformNode, AbstractMesh, Color3, StandardMaterial, Animation, Vector3 } from '@babylonjs/core'
+import { Scene, TransformNode, Animation, Vector3 } from '@babylonjs/core'
 import { Enemy } from './Enemy'
 import { AssetManager } from '../rendering/AssetManager'
 import { ClipPlayer } from '../rendering/ClipPlayer'
@@ -33,19 +33,6 @@ export class EnemyView {
     }
     this.last = { x: p.x, z: p.z }
   }
-  // brief white emissive blink so a hit reads instantly on the enemy's body
-  flashHit() {
-    if (this.dying) return
-    const meshes = this.mesh.getChildMeshes(false) as AbstractMesh[]
-    for (const m of meshes) {
-      const mat = m.material as StandardMaterial | null
-      if (!mat || !('emissiveColor' in mat)) continue
-      const prev = mat.emissiveColor?.clone() ?? new Color3(0, 0, 0)
-      mat.emissiveColor = new Color3(0.9, 0.9, 0.9)
-      setTimeout(() => { if (!m.isDisposed()) mat.emissiveColor = prev }, 90)
-    }
-  }
-
   // Play the death clip once, then dispose this corpse. Caller has already
   // removed the enemy from gameplay (no more hits/sync after this).
   die(onDone?: () => void) {

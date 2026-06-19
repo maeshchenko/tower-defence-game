@@ -423,7 +423,6 @@ function applyHit(target: Enemy, damage: number, slow?: number) {
   sfx.hit()
   floatText(target.pos.x, 1.7, target.pos.z, `-${damage} (${target.hp}/${target.maxHp})`, '#ffe27a')
   burst(scene, 'impact', target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.55)) // impact spark
-  views.get(target)?.flashHit() // white blink on the body
   shake.addTrauma(0.08)
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
