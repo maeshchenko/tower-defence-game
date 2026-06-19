@@ -43,6 +43,11 @@ export class AssetManager {
     return root
   }
 
+  // Returns the independent animation groups captured on this instance.
+  getAnimationGroups(root: TransformNode): AnimationGroup[] {
+    return (root.metadata?.animationGroups as AnimationGroup[] | undefined) ?? []
+  }
+
   // Loop the 'Idle' animation group on a freshly-instanced root (M1: no T-pose).
   playIdle(root: TransformNode): void {
     const groups = (root.metadata?.animationGroups as AnimationGroup[] | undefined) ?? []
