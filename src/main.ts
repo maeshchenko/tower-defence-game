@@ -59,12 +59,7 @@ const baseMat = new StandardMaterial('bm', scene); baseMat.diffuseColor = new Co
 const ROAD_W = 2.2
 // decor materials (shared)
 const mat = (name: string, r: number, g: number, b: number) => { const m = new StandardMaterial(name, scene); m.diffuseColor = new Color3(r, g, b); m.specularColor = new Color3(0, 0, 0); return m }
-const rockMat = mat('rock', 0.5, 0.5, 0.52)
-const crateMat = mat('crate', 0.55, 0.4, 0.22)
-const woodMat = mat('wood', 0.4, 0.28, 0.16)
-const leafMat = mat('leaf', 0.18, 0.45, 0.18)
 const bushMat = mat('bush', 0.22, 0.5, 0.22)
-const wallMat = mat('wall', 0.45, 0.43, 0.4)
 const moundMat = mat('mound', 0.32, 0.42, 0.2)
 const patchMats = [mat('p0', 0.3, 0.4, 0.18), mat('p1', 0.38, 0.32, 0.2), mat('p2', 0.16, 0.38, 0.16)]
 
@@ -73,6 +68,7 @@ let level!: Level
 let wm!: WaveManager
 let tm!: TowerManager
 let envMeshes: Mesh[] = []
+let envProps: TransformNode[] = []
 let obstacles: Obstacle[] = [] // solid props that block movement AND projectiles
 const PROJ_R = 0.2
 function inObstacle(x: number, z: number): boolean {
@@ -145,21 +141,19 @@ function buildEnvironment() {
 let patchTick = 0
 function buildProp(p: Prop) {
   const add = (m: Mesh) => { m.isPickable = false; envMeshes.push(m) }
-  if (p.kind === 'wall') {
-    const m = MeshBuilder.CreateBox('wallprop', { width: p.w, height: 1.7, depth: p.d }, scene)
-    m.position.set(p.x, 0.85, p.z); m.rotation.y = p.rot; m.material = wallMat; add(m)
-  } else if (p.kind === 'rock') {
-    const m = MeshBuilder.CreateBox('rock', { width: p.w, height: p.h, depth: p.d }, scene)
-    m.position.set(p.x, p.h / 2, p.z); m.rotation.set(p.rot * 0.2, p.rot, p.rot * 0.15); m.material = rockMat; add(m)
-  } else if (p.kind === 'crate') {
-    const m = MeshBuilder.CreateBox('crate', { width: p.w, height: p.h, depth: p.d }, scene)
-    m.position.set(p.x, p.h / 2, p.z); m.rotation.y = p.rot; m.material = crateMat; add(m)
-  } else if (p.kind === 'tree') {
-    const trunk = MeshBuilder.CreateCylinder('trunk', { height: 1.4, diameter: 0.4 }, scene)
-    trunk.position.set(p.x, 0.7, p.z); trunk.material = woodMat; add(trunk)
-    const leaf = MeshBuilder.CreateSphere('leaf', { diameter: 1.4 + p.w, segments: 6 }, scene)
-    leaf.position.set(p.x, 1.7, p.z); leaf.material = leafMat; add(leaf)
-  } else if (p.kind === 'bush') {
+  const SOLID_KEY: Record<string, string> = { wall: 'prop.wall', rock: 'prop.rock', crate: 'prop.crate', tree: 'prop.tree' }
+  const key = SOLID_KEY[p.kind]
+  if (key) {
+    const node = assets.instance(key)
+    node.position.set(p.x, 0, p.z)
+    node.rotation.y = p.rot
+    const base = node.scaling.x
+    node.scaling.set(base * (p.w / 1.5), base * (p.h / 1.5), base * (p.d / 1.5))
+    node.getChildMeshes().forEach((m) => { m.isPickable = false })
+    envProps.push(node)
+    return
+  }
+  if (p.kind === 'bush') {
     const m = MeshBuilder.CreateSphere('bush', { diameter: p.w, segments: 6 }, scene)
     m.position.set(p.x, p.w * 0.3, p.z); m.scaling.y = 0.6; m.material = bushMat; add(m)
   } else if (p.kind === 'mound') {
@@ -177,6 +171,7 @@ function loadMap(i: number) {
   for (const v of towerViews.values()) v.dispose(); towerViews.clear()
   for (const p of projectiles) p.mesh.dispose(false, true); projectiles.length = 0
   for (const m of envMeshes) m.dispose(); envMeshes = []
+  for (const n of envProps) n.dispose(false, true); envProps = []
   mapIndex = i
   level = MAPS[i]
   wm = new WaveManager(level.path, WaveManager.mapWaves(i))
