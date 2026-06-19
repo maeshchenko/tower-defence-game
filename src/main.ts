@@ -201,6 +201,7 @@ function buildProp(p: Prop) {
 function loadMap(i: number) {
   for (const v of views.values()) v.dispose(); views.clear()
   for (const c of corpses) c.dispose(); corpses.length = 0
+  clearHealthBars()
   for (const v of towerViews.values()) v.dispose(); towerViews.clear()
   for (const p of projectiles) p.mesh.dispose(false, true); projectiles.length = 0
   for (const f of flashes) { f.mesh.dispose(); f.mat.dispose() } flashes.length = 0
@@ -315,6 +316,33 @@ function floatText(x: number, y: number, z: number, text: string, color: string)
   requestAnimationFrame(() => { el.style.transform = 'translate(-50%,-160%)'; el.style.opacity = '0' })
   setTimeout(() => el.remove(), 720)
 }
+// floating enemy health bars (DOM elements projected above each live enemy)
+const healthBars = new Map<Enemy, HTMLDivElement>()
+function updateHealthBar(e: Enemy) {
+  const cam = scene.activeCamera; if (!cam) return
+  const w = engine.getRenderWidth(), h = engine.getRenderHeight()
+  const p = Vector3.Project(new Vector3(e.pos.x, 2.1, e.pos.z), Matrix.Identity(), scene.getTransformMatrix(), cam.viewport.toGlobal(w, h))
+  let bar = healthBars.get(e)
+  if (p.z < 0 || p.z > 1) { if (bar) bar.style.display = 'none'; return }
+  const rect = canvas.getBoundingClientRect()
+  if (!bar) {
+    bar = document.createElement('div')
+    bar.style.cssText = 'position:fixed;width:34px;height:5px;background:#300;border:1px solid #000;' +
+      'transform:translate(-50%,-50%);pointer-events:none;z-index:4'
+    const fill = document.createElement('div'); fill.style.cssText = 'height:100%;width:100%;background:#3c3'
+    bar.appendChild(fill); document.body.appendChild(bar); healthBars.set(e, bar)
+  }
+  bar.style.display = 'block'
+  bar.style.left = `${rect.left + p.x * rect.width / w}px`
+  bar.style.top = `${rect.top + p.y * rect.height / h}px`
+  const frac = Math.max(0, e.hp / e.maxHp)
+  const fill = bar.firstElementChild as HTMLDivElement
+  fill.style.width = `${frac * 100}%`
+  fill.style.background = frac > 0.5 ? '#3c3' : frac > 0.25 ? '#cc3' : '#c33'
+}
+function removeHealthBar(e: Enemy) { const b = healthBars.get(e); if (b) { b.remove(); healthBars.delete(e) } }
+function clearHealthBars() { for (const b of healthBars.values()) b.remove(); healthBars.clear() }
+
 // damage is applied here, when a projectile reaches its target — not when fired
 function applyHit(target: Enemy, damage: number, slow?: number) {
   if (!views.has(target)) return // already dead or leaked
@@ -324,7 +352,7 @@ function applyHit(target: Enemy, damage: number, slow?: number) {
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
     state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty })
-    const v = views.get(target)!; views.delete(target); wm.remove(target)
+    const v = views.get(target)!; views.delete(target); wm.remove(target); removeHealthBar(target)
     // play the death animation as a corpse, then self-remove from the list
     corpses.push(v); v.die(() => { const i = corpses.indexOf(v); if (i >= 0) corpses.splice(i, 1) })
   }
@@ -441,8 +469,9 @@ scene.onBeforeRenderObservable.add(() => {
     for (const e of wm.update(dt)) views.set(e, new EnemyView(scene, assets, e))
     for (const e of [...wm.active]) {
       e.update(dt)
-      if (e.reachedBase) { state.damageBase(1); views.get(e)?.dispose(); views.delete(e); wm.remove(e); continue }
+      if (e.reachedBase) { state.damageBase(1); removeHealthBar(e); views.get(e)?.dispose(); views.delete(e); wm.remove(e); continue }
       views.get(e)?.sync()
+      updateHealthBar(e)
       const atk = e.attack(dt, heroCtrl.pos) // returns damage when in range + off cooldown
       if (atk != null && heroState.alive) fireEnemyShot(e.pos, heroCtrl.pos, atk)
     }
