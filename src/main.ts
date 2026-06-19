@@ -137,15 +137,11 @@ function placeTile(key: string, x: number, z: number) {
   envProps.push(t)
 }
 
-// build the tiled ground, road, build-cell pads and base for the current level
+// build the road, build-cell pads and base for the current level (the green
+// 'ground' plane stays as the clean grass surface + aim-pick / collision target)
 function buildEnvironment() {
-  // grass ground: a grid of beveled Kenney tiles over the play field (the flat
-  // 'ground' plane stays underneath as the aim-pick / collision surface)
-  const STEP = 5.5
-  for (let gx = -16.5; gx <= 16.5; gx += STEP)
-    for (let gz = -16.5; gz <= 16.5; gz += STEP) placeTile('tile.ground', gx, gz)
-
-  // road: dirt tiles stepped along each axis-aligned path segment
+  // road: dirt tiles stepped along each axis-aligned path segment, raised just
+  // above the ground plane so they don't z-fight it
   for (let i = 0; i < level.path.length - 1; i++) {
     const a = level.path[i], b = level.path[i + 1]
     const len = Math.hypot(b.x - a.x, b.z - a.z)
@@ -207,6 +203,7 @@ function loadMap(i: number) {
   for (const c of corpses) c.dispose(); corpses.length = 0
   for (const v of towerViews.values()) v.dispose(); towerViews.clear()
   for (const p of projectiles) p.mesh.dispose(false, true); projectiles.length = 0
+  for (const f of flashes) { f.mesh.dispose(); f.mat.dispose() } flashes.length = 0
   for (const m of envMeshes) m.dispose(); envMeshes = []
   for (const n of envProps) n.dispose(false, true); envProps = []
   mapIndex = i
@@ -231,6 +228,28 @@ bus.on('heroDied', () => { heroCtrl.pos = { x: level.base.x, y: 0, z: level.base
 // only enemy shots are still plain spheres.
 const enemyShotMat = new StandardMaterial('shot_enemy', scene)
 enemyShotMat.emissiveColor = new Color3(1, 0.25, 0.2); enemyShotMat.diffuseColor = new Color3(1, 0.25, 0.2)
+
+// transient "flash" FX (muzzle / impact): a glowing sphere that expands and fades
+interface Flash { mesh: Mesh; mat: StandardMaterial; age: number; ttl: number; grow: number }
+const flashes: Flash[] = []
+function spawnFlash(x: number, y: number, z: number, color: Color3, size = 0.5, grow = 2.5) {
+  const m = MeshBuilder.CreateSphere('fx', { diameter: size, segments: 6 }, scene)
+  const mat = new StandardMaterial('fxm', scene)
+  mat.emissiveColor = color; mat.diffuseColor = color; mat.disableLighting = true
+  mat.alpha = 0.85; m.material = mat; m.isPickable = false; m.position.set(x, y, z)
+  flashes.push({ mesh: m, mat, age: 0, ttl: 0.22, grow })
+}
+function updateFlashes(dt: number) {
+  for (let i = flashes.length - 1; i >= 0; i--) {
+    const f = flashes[i]; f.age += dt
+    const t = f.age / f.ttl
+    if (t >= 1) { f.mesh.dispose(); f.mat.dispose(); flashes.splice(i, 1); continue }
+    f.mesh.scaling.setAll(1 + t * f.grow); f.mat.alpha = 0.85 * (1 - t)
+  }
+}
+const SHOT_FX: Record<TowerKind, Color3> = {
+  cannon: new Color3(1, 0.8, 0.3), slow: new Color3(0.5, 0.8, 1), sniper: new Color3(1, 0.5, 0.4),
+}
 
 // a projectile homes onto a target enemy (tower shot, damage applied on arrival),
 // flies straight and hits enemies (hero shot), or flies straight at the hero (enemy shot).
@@ -260,6 +279,7 @@ function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: Towe
   const key = kind === 'cannon' ? 'ammo.cannon' : kind === 'sniper' ? 'ammo.sniper' : 'ammo.slow'
   const ball = spawnModelShot(key, from.x, 1.2, from.z)
   aimProjectile(ball, { x: target.pos.x - from.x, y: 0.8 - 1.2, z: target.pos.z - from.z })
+  spawnFlash(from.x, 1.4, from.z, SHOT_FX[kind], 0.45, 1.5) // muzzle flash
   projectiles.push({ mesh: ball, target, ttl: 3, damage, slow })
 }
 // actual body radius per enemy kind (capsule radius), for tight hit detection
@@ -268,6 +288,7 @@ const PROJ_HIT = 0.15 // projectile radius added to the target's radius
 function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, damage: number) {
   const ball = spawnModelShot('ammo.sniper', from.x, from.y, from.z)
   aimProjectile(ball, dir)
+  spawnFlash(from.x + dir.x * 0.4, from.y, from.z + dir.z * 0.4, new Color3(0.6, 1, 0.5), 0.4, 1.5)
   projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage })
 }
 // enemy fires a straight (non-homing) shot at where the hero is now — dodge by moving
@@ -299,6 +320,7 @@ function applyHit(target: Enemy, damage: number, slow?: number) {
   if (!views.has(target)) return // already dead or leaked
   target.takeDamage(damage)
   floatText(target.pos.x, 1.7, target.pos.z, `-${damage} (${target.hp}/${target.maxHp})`, '#ffe27a')
+  spawnFlash(target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.5), 0.5, 2) // impact spark
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
     state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty })
@@ -414,6 +436,7 @@ scene.onBeforeRenderObservable.add(() => {
   const dt = engine.getDeltaTime() / 1000
   heroState.tick(dt)
   updateProjectiles(dt)
+  updateFlashes(dt)
   if (!over && state.phase === 'wave') {
     for (const e of wm.update(dt)) views.set(e, new EnemyView(scene, assets, e))
     for (const e of [...wm.active]) {

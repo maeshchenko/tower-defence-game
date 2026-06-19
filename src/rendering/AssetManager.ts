@@ -28,9 +28,16 @@ export class AssetManager {
     if (!def) throw new Error('unknown model key: ' + key)
     const root = new TransformNode('model:' + key, this.scene)
     const allGroups: AnimationGroup[] = []
+    const multiPart = (def.parts?.length ?? 0) > 0
+    let yCursor = 0 // stack each successive part on top of the previous one
     for (const url of [def.url, ...(def.parts ?? [])]) {
       const node = this.cloneInto(url)
       node.parent = root
+      if (multiPart) {
+        node.position.y = yCursor
+        node.computeWorldMatrix(true)
+        yCursor += this.measureHeight(node)
+      }
       const groups = node.metadata?.animationGroups as AnimationGroup[] | undefined
       if (groups) allGroups.push(...groups)
     }
@@ -42,9 +49,9 @@ export class AssetManager {
       root.computeWorldMatrix(true)
       root.position.y = (def.tileTopY ?? 0) - this.measureMaxY(root)
     } else {
-      // measureHeight is called before root.scaling is applied, so bounding boxes are at scale 1.
-      const h = this.measureHeight(root)
-      root.scaling.setAll(normalizeScale(h, def.targetHeight))
+      // bounding boxes are at scale 1 here (root.scaling not yet applied)
+      const ref = def.normalizeBy === 'max' ? this.measureMaxExtent(root) : this.measureHeight(root)
+      root.scaling.setAll(normalizeScale(ref, def.targetHeight))
     }
     if (def.yaw) root.rotation.y = def.yaw
     if (def.tint) this.applyTint(root, def.tint)
@@ -87,6 +94,7 @@ export class AssetManager {
   private measureHeight(root: TransformNode): number {
     let min = Infinity, max = -Infinity
     for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      m.computeWorldMatrix(true)
       const b = m.getBoundingInfo().boundingBox
       min = Math.min(min, b.minimumWorld.y)
       max = Math.max(max, b.maximumWorld.y)
@@ -94,10 +102,24 @@ export class AssetManager {
     return max > min ? max - min : 1
   }
 
+  // largest of the world-space X/Y/Z extents (for long/flat models like arrows)
+  private measureMaxExtent(root: TransformNode): number {
+    let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity, mnz = Infinity, mxz = -Infinity
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      m.computeWorldMatrix(true)
+      const b = m.getBoundingInfo().boundingBox
+      mnx = Math.min(mnx, b.minimumWorld.x); mxx = Math.max(mxx, b.maximumWorld.x)
+      mny = Math.min(mny, b.minimumWorld.y); mxy = Math.max(mxy, b.maximumWorld.y)
+      mnz = Math.min(mnz, b.minimumWorld.z); mxz = Math.max(mxz, b.maximumWorld.z)
+    }
+    return Math.max(mxx - mnx, mxy - mny, mxz - mnz)
+  }
+
   // largest of the world-space X and Z extents (for footprint-scaling tiles)
   private measureXZ(root: TransformNode): number {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
     for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      m.computeWorldMatrix(true)
       const b = m.getBoundingInfo().boundingBox
       minX = Math.min(minX, b.minimumWorld.x); maxX = Math.max(maxX, b.maximumWorld.x)
       minZ = Math.min(minZ, b.minimumWorld.z); maxZ = Math.max(maxZ, b.maximumWorld.z)

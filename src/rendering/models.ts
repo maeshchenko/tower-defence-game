@@ -1,8 +1,11 @@
 export interface ModelDef {
   url: string          // path under public/, e.g. '/models/hero/Knight.glb'
-  targetHeight: number // desired height in game units after normalize
+  targetHeight: number // desired size in game units after normalize (see normalizeBy)
   yaw?: number         // extra Y rotation (radians) if model faces the wrong way
-  parts?: string[]     // extra GLB urls stacked onto url (towers), bottom→top
+  parts?: string[]     // extra GLB urls STACKED vertically onto url (towers), bottom→top
+  // 'height' (default): fit targetHeight to the Y extent. 'max': fit it to the
+  // largest of X/Y/Z — use for long/flat models (an arrow) that height-normalize blows up.
+  normalizeBy?: 'height' | 'max'
   // Flat override colour [r,g,b] (0..1). Kenney's tower/base/tile GLBs (UnityGLTF export)
   // mis-sample the shared colormap atlas under Babylon's loader and render purple,
   // so we paint them a solid colour instead. Proper textured towers come in M4.
@@ -43,7 +46,7 @@ export const MODELS: Record<string, ModelDef> = {
   'hero.knight':  { url: H + 'Knight.glb', targetHeight: 1.8 },
 
   'ammo.cannon':  { url: A + 'weapon-ammo-cannonball.glb', targetHeight: 0.5 },
-  'ammo.sniper':  { url: A + 'weapon-ammo-arrow.glb',      targetHeight: 0.6 },
+  'ammo.sniper':  { url: A + 'weapon-ammo-arrow.glb',      targetHeight: 0.9, normalizeBy: 'max' },
   'ammo.slow':    { url: A + 'weapon-ammo-bullet.glb',     targetHeight: 0.4 },
 
   'prop.tree':  { url: P + 'detail-tree-large.glb', targetHeight: 2.6 },
