@@ -293,7 +293,6 @@ const PROJ_HIT = 0.15 // projectile radius added to the target's radius
 function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, damage: number) {
   const ball = spawnModelShot('ammo.sniper', from.x, from.y, from.z)
   aimProjectile(ball, dir)
-  spawnFlash(from.x + dir.x * 0.4, from.y, from.z + dir.z * 0.4, new Color3(0.6, 1, 0.5), 0.4, 1.5)
   projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage })
 }
 // enemy fires a straight (non-homing) shot at where the hero is now — dodge by moving
