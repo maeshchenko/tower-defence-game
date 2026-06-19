@@ -8,7 +8,10 @@ import { burst } from './fx/Particles'
 import { attachTrail } from './fx/Trail'
 import { AssetManager } from './rendering/AssetManager'
 import { ClipPlayer } from './rendering/ClipPlayer'
+import { AudioBus } from './audio/AudioBus'
 import { Sfx } from './audio/Sfx'
+import { Music } from './audio/Music'
+import { Settings } from './ui/Settings'
 import { EventBus } from './core/EventBus'
 import { Vec3 } from './core/Vec3'
 import { GameState } from './core/GameState'
@@ -35,7 +38,9 @@ const canvas = document.getElementById('app') as HTMLCanvasElement
 const engine = new Engine(canvas, true)
 const scene = new Scene(engine)
 const assets = new AssetManager()
-const sfx = new Sfx()
+const audio = new AudioBus()
+const sfx = new Sfx(audio)
+const music = new Music(audio)
 
 function showLoading(): HTMLDivElement {
   const el = document.createElement('div')
@@ -133,6 +138,10 @@ const heroCtrl = new HeroController(scene, rig, heroWeapon)
 const speed = new Speed()
 const hud = new HUD(state, heroState, speed); hud.mount()
 const towerPanel = new TowerPanel(); towerPanel.mount()
+const settings = new Settings(audio, {
+  get: () => quality,
+  set: (p) => { quality = p; env.applyQuality(resolveQuality(p)); savePreset(p) },
+}); settings.mount()
 
 // KayKit Knight model — created after assets are preloaded in boot()
 // The Knight's visual front is local +Z and heroCtrl.yaw = atan2(aim.x, aim.z)
@@ -305,7 +314,7 @@ function loadMap(i: number) {
 
 bus.on('gameOver', ({ victory }) => {
   if (victory && mapIndex < MAPS.length - 1) { state.nextMap(); loadMap(mapIndex + 1); return }
-  over = true; hud.showEnd(victory); showEndButtons()
+  over = true; hud.showEnd(victory); showEndButtons(); music.silence()
 })
 // on death, send the hero back to the base to respawn there
 bus.on('heroDied', () => { heroCtrl.pos = { x: level.base.x, y: 0, z: level.base.z - 3 } })
@@ -522,7 +531,7 @@ function startNextWave() {
     const bonus = Math.ceil(nextWaveTimer)
     state.addGold(bonus); flash(`+${bonus}з за ранний старт`)
   }
-  state.startWave(); wm.startWave(state.wave - 1); nextWaveTimer = -1; sfx.waveStart()
+  state.startWave(); wm.startWave(state.wave - 1); nextWaveTimer = -1; sfx.waveStart(); music.setState('tense')
 }
 
 // input: Tab toggle, Enter start wave now
@@ -533,7 +542,7 @@ addEventListener('keydown', (e) => {
   }
   if (e.key === 'Enter') startNextWave()
   if (e.key === ' ') { e.preventDefault(); speed.togglePause(); hud.update() } // Space = pause
-  if (e.key === 'm' || e.key === 'M' || e.key === 'ь') sfx.muted = !sfx.muted // mute toggle
+  if (e.key === 'm' || e.key === 'M' || e.key === 'ь') audio.toggleMute() // mute toggle
   if (e.key === 'q' || e.key === 'Q' || e.key === 'й') {
     quality = nextPreset(quality)
     env.applyQuality(resolveQuality(quality))
@@ -652,7 +661,7 @@ scene.onBeforeRenderObservable.add(() => {
     if (wm.cleared()) {
       state.addGold(20 + state.wave * 5); state.endWave()
       const phaseAfter: string = state.phase
-      if (phaseAfter === 'build') nextWaveTimer = 5 // auto-start the next wave after a short break
+      if (phaseAfter === 'build') { nextWaveTimer = 5; music.setState('calm') } // breather before next wave
     }
   } else {
     processHeroShot(heroCtrl.update(dt))
@@ -705,7 +714,7 @@ function showTitle() {
   sub.textContent = 'Защити крепость · WASD — бег · Tab — вид · клик — строить/стрелять · M — звук'
   sub.style.cssText = 'font-size:15px;opacity:0.85;text-align:center;max-width:640px'
   const play = menuButton('Играть')
-  play.onclick = () => { started = true; ov.remove(); sfx.waveStart() } // first gesture also unlocks audio
+  play.onclick = () => { started = true; ov.remove(); audio.unlock(); music.start(); music.setState('calm'); sfx.waveStart() } // first gesture unlocks audio + starts music
   ov.append(title, sub, play)
   document.body.appendChild(ov)
 }
