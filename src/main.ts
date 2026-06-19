@@ -110,7 +110,7 @@ function syncHero() {
   heroBody.position.set(p.x, 0, p.z)
   heroBody.rotation.y = heroCtrl.yaw + HERO_FACING_OFFSET
   // visible from above when alive; hidden in first-person or while respawning
-  heroBody.setEnabled(rig.mode !== 'hero' && heroState.alive)
+  heroBody.setEnabled(heroState.alive) // visible in both top-down and third-person
   if (heroClips && !heroBusy) {
     const moving = heroLast ? (p.x - heroLast.x) ** 2 + (p.z - heroLast.z) ** 2 > 1e-6 : false
     heroClips.play(moving ? /running_a$/i : /idle/i)
@@ -484,7 +484,7 @@ const legend = document.createElement('div')
 legend.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font-family:monospace;font-size:13px;line-height:1.5;text-align:right;text-shadow:0 0 3px #000;pointer-events:none'
 legend.innerHTML =
   `cannon ${TOWER_DEFS.cannon[0].cost}g · slow ${TOWER_DEFS.slow[0].cost}g · sniper ${TOWER_DEFS.sniper[0].cost}g<br>` +
-  `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/от лица`
+  `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/сзади (3-е лицо)`
 document.body.appendChild(legend)
 
 async function boot() {
