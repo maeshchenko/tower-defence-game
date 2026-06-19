@@ -1,5 +1,6 @@
-import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh } from '@babylonjs/core'
+import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix } from '@babylonjs/core'
 import { EventBus } from './core/EventBus'
+import { Vec3 } from './core/Vec3'
 import { GameState } from './core/GameState'
 import { Level } from './world/Level'
 import { CameraRig } from './camera/CameraRig'
@@ -64,7 +65,8 @@ heroNose.material = heroMat; heroNose.isPickable = false; heroNose.parent = hero
 function syncHero() {
   heroBody.position.set(heroCtrl.pos.x, 0.7, heroCtrl.pos.z)
   heroBody.rotation.y = heroCtrl.yaw
-  heroBody.setEnabled(rig.mode !== 'hero') // don't render your own body in first-person
+  // visible from above when alive; hidden in first-person or while respawning
+  heroBody.setEnabled(rig.mode !== 'hero' && heroState.alive)
   rig.syncHero(heroCtrl.pos)
 }
 
@@ -116,6 +118,8 @@ bus.on('gameOver', ({ victory }) => {
   if (victory && mapIndex < MAPS.length - 1) { state.nextMap(); loadMap(mapIndex + 1); return }
   over = true; hud.showEnd(victory)
 })
+// on death, send the hero back to the base to respawn there
+bus.on('heroDied', () => { heroCtrl.pos = { x: level.base.x, y: 0, z: level.base.z - 3 } })
 
 // projectiles: small spheres a tower fires that home onto the (moving) target
 const SHOT_COLOR: Record<TowerKind, Color3> = {
@@ -128,12 +132,15 @@ for (const k of ['cannon', 'slow', 'sniper'] as TowerKind[]) {
 }
 const heroShotMat = new StandardMaterial('shot_hero', scene)
 heroShotMat.emissiveColor = new Color3(0.6, 1, 0.5); heroShotMat.diffuseColor = new Color3(0.6, 1, 0.5)
+const enemyShotMat = new StandardMaterial('shot_enemy', scene)
+enemyShotMat.emissiveColor = new Color3(1, 0.25, 0.2); enemyShotMat.diffuseColor = new Color3(1, 0.25, 0.2)
 
-// a projectile homes onto a target enemy (carrying damage, applied on arrival),
-// or flies straight along dir until ttl runs out (a hero miss — no damage)
-interface Projectile { mesh: Mesh; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number }
+// a projectile homes onto a target enemy (tower shot, damage applied on arrival),
+// flies straight and hits enemies (hero shot), or flies straight at the hero (enemy shot).
+interface Projectile { mesh: Mesh; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number }
 const projectiles: Projectile[] = []
 const SHOT_SPEED = 18
+const ENEMY_SHOT_SPEED = 9 // slower so the hero can dodge by moving
 function spawnBall(x: number, y: number, z: number, mat: StandardMaterial, diameter: number): Mesh {
   const ball = MeshBuilder.CreateSphere('proj', { diameter, segments: 6 }, scene)
   ball.material = mat; ball.isPickable = false; ball.position.set(x, y, z)
@@ -148,10 +155,35 @@ function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: numbe
   const ball = spawnBall(from.x, from.y, from.z, heroShotMat, 0.22)
   projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage })
 }
+// enemy fires a straight (non-homing) shot at where the hero is now — dodge by moving
+function fireEnemyShot(from: { x: number; z: number }, heroPos: Vec3, damage: number) {
+  const ball = spawnBall(from.x, 0.8, from.z, enemyShotMat, 0.3)
+  const d = new Vector3(heroPos.x - from.x, 1.0 - 0.8, heroPos.z - from.z).normalize()
+  projectiles.push({ mesh: ball, dir: d, ttl: 2.5, damage, vsHero: true, speed: ENEMY_SHOT_SPEED })
+}
+
+// RPG-style floating damage number at a world position
+function floatText(x: number, y: number, z: number, text: string, color: string) {
+  const cam = scene.activeCamera; if (!cam) return
+  const w = engine.getRenderWidth(), h = engine.getRenderHeight()
+  const p = Vector3.Project(new Vector3(x, y, z), Matrix.Identity(), scene.getTransformMatrix(), cam.viewport.toGlobal(w, h))
+  if (p.z < 0 || p.z > 1) return // behind the camera
+  const rect = canvas.getBoundingClientRect()
+  const el = document.createElement('div')
+  el.className = 'dmgnum'
+  el.textContent = text
+  el.style.cssText = `position:fixed;left:${rect.left + p.x * rect.width / w}px;top:${rect.top + p.y * rect.height / h}px;` +
+    `transform:translate(-50%,-50%);color:${color};font-family:monospace;font-weight:bold;font-size:15px;` +
+    `text-shadow:0 0 3px #000;pointer-events:none;transition:transform .7s ease-out,opacity .7s;z-index:5`
+  document.body.appendChild(el)
+  requestAnimationFrame(() => { el.style.transform = 'translate(-50%,-160%)'; el.style.opacity = '0' })
+  setTimeout(() => el.remove(), 720)
+}
 // damage is applied here, when a projectile reaches its target — not when fired
 function applyHit(target: Enemy, damage: number, slow?: number) {
   if (!views.has(target)) return // already dead or leaked
   target.takeDamage(damage)
+  floatText(target.pos.x, 1.7, target.pos.z, `-${damage} (${target.hp}/${target.maxHp})`, '#ffe27a')
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
     state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty })
@@ -163,22 +195,31 @@ function updateProjectiles(dt: number) {
     const p = projectiles[i]
     p.ttl -= dt
     if (p.ttl <= 0) { p.mesh.dispose(); projectiles.splice(i, 1); continue }
+    const step = (p.speed ?? SHOT_SPEED) * dt
     if (p.target) {
       const tgt = new Vector3(p.target.pos.x, 0.8, p.target.pos.z) // follow the moving target
       const dir = tgt.subtract(p.mesh.position)
-      const step = SHOT_SPEED * dt
       if (dir.length() <= step) { // arrived — deal damage now
         if (p.damage != null) applyHit(p.target, p.damage, p.slow)
         p.mesh.dispose(); projectiles.splice(i, 1); continue
       }
       p.mesh.position.addInPlace(dir.normalize().scale(step))
     } else if (p.dir) {
-      // hero ballistic shot: fly straight, hit whichever enemy it actually reaches
-      p.mesh.position.addInPlace(p.dir.scale(SHOT_SPEED * dt))
-      if (p.damage != null) {
+      p.mesh.position.addInPlace(p.dir.scale(step))
+      const pp = p.mesh.position
+      if (p.vsHero) {
+        // enemy shot vs the hero
+        const dx = heroCtrl.pos.x - pp.x, dy = 1.0 - pp.y, dz = heroCtrl.pos.z - pp.z
+        if (dx * dx + dy * dy + dz * dz < 0.7 && heroState.alive) {
+          heroState.takeDamage(p.damage ?? 0)
+          floatText(heroCtrl.pos.x, 2.0, heroCtrl.pos.z, `-${p.damage}`, '#ff6b6b')
+          p.mesh.dispose(); projectiles.splice(i, 1); continue
+        }
+      } else if (p.damage != null) {
+        // hero ballistic shot vs enemies — hits whichever it actually reaches
         for (const e of views.keys()) {
           const ep = e.pos
-          const dx = ep.x - p.mesh.position.x, dy = 0.8 - p.mesh.position.y, dz = ep.z - p.mesh.position.z
+          const dx = ep.x - pp.x, dy = 0.8 - pp.y, dz = ep.z - pp.z
           if (dx * dx + dy * dy + dz * dz < HERO_HIT_R2) {
             applyHit(e, p.damage); p.mesh.dispose(); projectiles.splice(i, 1); break
           }
@@ -250,6 +291,8 @@ scene.onBeforeRenderObservable.add(() => {
       e.update(dt)
       if (e.reachedBase) { state.damageBase(1); views.get(e)?.dispose(); views.delete(e); wm.remove(e); continue }
       views.get(e)?.sync()
+      const atk = e.attack(dt, heroCtrl.pos) // returns damage when in range + off cooldown
+      if (atk != null && heroState.alive) fireEnemyShot(e.pos, heroCtrl.pos, atk)
     }
     for (const shot of tm.update(dt, wm.active)) {
       const firing = [...towerViews.keys()].find((t) => t.pos === shot.from)

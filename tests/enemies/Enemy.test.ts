@@ -32,4 +32,18 @@ describe('Enemy', () => {
     e.update(1) // slow expired -> full speed 2
     expect(e.pos.x).toBeCloseTo(3)
   })
+  it('exposes maxHp from its def', () => {
+    expect(new Enemy(ENEMY_DEFS.normal, path).maxHp).toBe(30)
+  })
+  it('attacks hero only when in range and off cooldown', () => {
+    const e = new Enemy(ENEMY_DEFS.normal, [{x:0,y:0,z:0},{x:100,y:0,z:0}]) // range 7, atk 5, rate 0.5 -> interval 2
+    const hero = { x: 1, y: 0, z: 0 }
+    expect(e.attack(0.001, hero)).toBeNull() // cooldown not elapsed yet
+    expect(e.attack(10, hero)).toBe(5)       // off cooldown + in range -> fires
+    expect(e.attack(0.001, hero)).toBeNull() // back on cooldown
+  })
+  it('does not attack a hero out of range', () => {
+    const e = new Enemy(ENEMY_DEFS.normal, [{x:0,y:0,z:0},{x:100,y:0,z:0}])
+    expect(e.attack(10, { x: 50, y: 0, z: 0 })).toBeNull()
+  })
 })
