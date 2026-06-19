@@ -2,9 +2,11 @@ import { Scene, Vector3 } from '@babylonjs/core'
 import { CameraRig } from '../camera/CameraRig'
 import { HeroWeapon } from './HeroWeapon'
 import { Vec3 } from '../core/Vec3'
+import { Obstacle } from '../world/Decor'
 
 const SPEED = 1.5
 const BOUND = 19 // keep hero inside the field
+const HERO_R = 0.4 // hero collision radius
 const EYE_FPS = 1.1
 const EYE_TOP = 0.6
 
@@ -20,6 +22,14 @@ export class HeroController {
   yaw = 0
   private keys = new Set<string>()
   private wantFire = false
+  private obstacles: Obstacle[] = []
+  setObstacles(o: Obstacle[]) { this.obstacles = o }
+  private blocked(x: number, z: number): boolean {
+    for (const o of this.obstacles) {
+      if (Math.abs(x - o.x) < o.hw + HERO_R && Math.abs(z - o.z) < o.hd + HERO_R) return true
+    }
+    return false
+  }
   constructor(private scene: Scene, private rig: CameraRig, private weapon: HeroWeapon) {
     // track by physical key code so any keyboard layout (e.g. Cyrillic цфыв) works as WASD
     addEventListener('keydown', (e) => this.keys.add(e.code))
@@ -49,8 +59,11 @@ export class HeroController {
     if (this.keys.has('KeyA')) move.subtractInPlace(right)
     if (move.length() > 0) {
       move.normalize().scaleInPlace(SPEED * dt)
-      this.pos.x = Math.max(-BOUND, Math.min(BOUND, this.pos.x + move.x))
-      this.pos.z = Math.max(-BOUND, Math.min(BOUND, this.pos.z + move.z))
+      // move per-axis so the hero slides along walls instead of sticking
+      const nx = Math.max(-BOUND, Math.min(BOUND, this.pos.x + move.x))
+      if (!this.blocked(nx, this.pos.z)) this.pos.x = nx
+      const nz = Math.max(-BOUND, Math.min(BOUND, this.pos.z + move.z))
+      if (!this.blocked(this.pos.x, nz)) this.pos.z = nz
     }
 
     // aim direction + facing
