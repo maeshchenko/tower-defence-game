@@ -55,7 +55,6 @@ const state = new GameState(bus, { totalWaves: 10 }) // 10 waves per map
 // shared environment materials
 const roadMat = new StandardMaterial('roadmat', scene); roadMat.diffuseColor = new Color3(0.35, 0.3, 0.25)
 const cellMat = new StandardMaterial('cellmat', scene); cellMat.diffuseColor = new Color3(0.3, 0.55, 0.8); cellMat.alpha = 0.85
-const baseMat = new StandardMaterial('bm', scene); baseMat.diffuseColor = new Color3(0.2, 0.4, 0.9)
 const ROAD_W = 2.2
 // decor materials (shared)
 const mat = (name: string, r: number, g: number, b: number) => { const m = new StandardMaterial(name, scene); m.diffuseColor = new Color3(r, g, b); m.specularColor = new Color3(0, 0, 0); return m }
@@ -127,9 +126,10 @@ function buildEnvironment() {
     pad.position.set(c.pos.x, 0.06, c.pos.z); pad.scaling.y = 0.04; pad.material = cellMat
     envMeshes.push(pad)
   }
-  const baseMesh = MeshBuilder.CreateBox('base', { size: 2 }, scene)
-  baseMesh.position.set(level.base.x, 1, level.base.z); baseMesh.material = baseMat
-  envMeshes.push(baseMesh)
+  const keep = assets.instance('base.keep')
+  keep.position.set(level.base.x, 0, level.base.z)
+  keep.getChildMeshes().forEach((m) => (m.isPickable = false))
+  envProps.push(keep)
 
   // scatter decor + obstacles to make the field feel like a real place
   const decor = generateDecor(level, mapIndex)
