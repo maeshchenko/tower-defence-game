@@ -33,6 +33,10 @@ export class WaveManager {
   remove(e: Enemy) { this._active = this._active.filter((x) => x !== e) }
   cleared(): boolean { return !this.spawning && this._active.length === 0 }
 
+  // composition of a wave (for the "next wave" preview); empty if past the last wave
+  peek(index: number): WaveEntry[] { return this.waves[index] ?? [] }
+  get waveCount(): number { return this.waves.length }
+
   static demoWaves(): WaveEntry[][] {
     const w: WaveEntry[][] = []
     for (let i = 0; i < 10; i++) {
