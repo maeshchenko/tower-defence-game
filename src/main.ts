@@ -41,6 +41,14 @@ for (const p of level.path) {
   m.position.set(p.x, 0.05, p.z); m.scaling.y = 0.05
   const mat = new StandardMaterial('pm', scene); mat.diffuseColor = new Color3(0.35,0.3,0.25); m.material = mat
 }
+// draw build cells as visible pads (where towers can be placed)
+for (const c of level.cells) {
+  const pad = MeshBuilder.CreateBox('cell', { size: 2.2 }, scene)
+  pad.position.set(c.pos.x, 0.06, c.pos.z); pad.scaling.y = 0.04
+  const pmat = new StandardMaterial('cellmat', scene)
+  pmat.diffuseColor = new Color3(0.3, 0.55, 0.8); pmat.alpha = 0.85
+  pad.material = pmat
+}
 // base marker
 const baseMesh = MeshBuilder.CreateBox('base', { size: 2 }, scene)
 baseMesh.position.set(level.base.x, 1, level.base.z)
