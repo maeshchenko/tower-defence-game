@@ -11,6 +11,7 @@ import { HeroController, HeroShot } from './hero/HeroController'
 import { WaveManager } from './enemies/WaveManager'
 import { EnemyView } from './enemies/EnemyView'
 import { Enemy } from './enemies/Enemy'
+import { EnemyKind } from './enemies/EnemyTypes'
 import { TowerManager } from './towers/TowerManager'
 import { TowerView } from './towers/TowerView'
 import { Tower } from './towers/Tower'
@@ -206,7 +207,9 @@ function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: Towe
   const ball = spawnBall(from.x, 1.2, from.z, SHOT_MAT[kind], kind === 'sniper' ? 0.35 : 0.5)
   projectiles.push({ mesh: ball, target, ttl: 3, damage, slow })
 }
-const HERO_HIT_R2 = 1.0 // squared hit radius for the hero's ballistic shots
+// actual body radius per enemy kind (capsule radius), for tight hit detection
+const ENEMY_RADIUS: Record<EnemyKind, number> = { normal: 0.4, fast: 0.3, tank: 0.7 }
+const PROJ_HIT = 0.15 // projectile radius added to the target's radius
 function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, damage: number) {
   const ball = spawnBall(from.x, from.y, from.z, heroShotMat, 0.22)
   projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage })
@@ -264,19 +267,21 @@ function updateProjectiles(dt: number) {
       p.mesh.position.addInPlace(p.dir.scale(step))
       const pp = p.mesh.position
       if (p.vsHero) {
-        // enemy shot vs the hero
-        const dx = heroCtrl.pos.x - pp.x, dy = 1.0 - pp.y, dz = heroCtrl.pos.z - pp.z
-        if (dx * dx + dy * dy + dz * dz < 0.7 && heroState.alive) {
+        // enemy shot vs the hero — by the hero's actual body (radius + height)
+        const hdx = heroCtrl.pos.x - pp.x, hdz = heroCtrl.pos.z - pp.z
+        const r = 0.4 + PROJ_HIT
+        if (hdx * hdx + hdz * hdz < r * r && Math.abs(pp.y - 0.7) < 0.8 && heroState.alive) {
           heroState.takeDamage(p.damage ?? 0)
           floatText(heroCtrl.pos.x, 2.0, heroCtrl.pos.z, `-${p.damage}`, '#ff6b6b')
           p.mesh.dispose(); projectiles.splice(i, 1); continue
         }
       } else if (p.damage != null) {
-        // hero ballistic shot vs enemies — hits whichever it actually reaches
+        // hero ballistic shot vs enemies — hit by the enemy's actual body (radius + height)
         for (const e of views.keys()) {
           const ep = e.pos
-          const dx = ep.x - pp.x, dy = 0.8 - pp.y, dz = ep.z - pp.z
-          if (dx * dx + dy * dy + dz * dz < HERO_HIT_R2) {
+          const r = ENEMY_RADIUS[e.kind] + PROJ_HIT
+          const hdx = ep.x - pp.x, hdz = ep.z - pp.z
+          if (hdx * hdx + hdz * hdz < r * r && Math.abs(pp.y - 0.8) < 0.95) {
             applyHit(e, p.damage); p.mesh.dispose(); projectiles.splice(i, 1); break
           }
         }
