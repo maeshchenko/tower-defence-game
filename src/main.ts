@@ -1,5 +1,5 @@
 import '@babylonjs/loaders/glTF'
-import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix } from '@babylonjs/core'
+import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode } from '@babylonjs/core'
 import { AssetManager } from './rendering/AssetManager'
 import { EventBus } from './core/EventBus'
 import { Vec3 } from './core/Vec3'
@@ -88,16 +88,20 @@ const heroWeapon = new HeroWeapon()
 const heroCtrl = new HeroController(scene, rig, heroWeapon)
 const hud = new HUD(state, heroState); hud.mount()
 
-// visible hero body (seen from the top-down view; hidden in first-person)
-const heroMat = new StandardMaterial('heromat', scene)
-heroMat.diffuseColor = new Color3(0.95, 0.85, 0.3); heroMat.emissiveColor = new Color3(0.35, 0.3, 0.07)
-const heroBody = MeshBuilder.CreateCapsule('herobody', { height: 1.4, radius: 0.35 }, scene)
-heroBody.material = heroMat; heroBody.isPickable = false
-const heroNose = MeshBuilder.CreateBox('heronose', { width: 0.16, height: 0.16, depth: 0.5 }, scene)
-heroNose.material = heroMat; heroNose.isPickable = false; heroNose.parent = heroBody; heroNose.position.set(0, 0.25, 0.5)
+// KayKit Knight model — created after assets are preloaded in boot()
+// KayKit characters' visual front is local -Z, so add π to match the controller yaw
+const HERO_FACING_OFFSET = Math.PI
+let heroBody!: TransformNode
+
+function makeHero() {
+  heroBody = assets.instance('hero.knight')
+  heroBody.getChildMeshes().forEach((m) => (m.isPickable = false))
+  assets.playIdle(heroBody)
+}
+
 function syncHero() {
-  heroBody.position.set(heroCtrl.pos.x, 0.7, heroCtrl.pos.z)
-  heroBody.rotation.y = heroCtrl.yaw
+  heroBody.position.set(heroCtrl.pos.x, 0, heroCtrl.pos.z)
+  heroBody.rotation.y = heroCtrl.yaw + HERO_FACING_OFFSET
   // visible from above when alive; hidden in first-person or while respawning
   heroBody.setEnabled(rig.mode !== 'hero' && heroState.alive)
   rig.syncHero(heroCtrl.pos)
@@ -421,6 +425,7 @@ async function boot() {
   const overlay = showLoading()
   await assets.preload(scene)
   overlay.remove()
+  makeHero()
   loadMap(0)
   engine.runRenderLoop(() => scene.render())
   addEventListener('resize', () => engine.resize())
