@@ -22,8 +22,10 @@ export class HeroController {
   yaw = 0
   private keys = new Set<string>()
   private wantFire = false
+  private active = true // false while the hero is dead/respawning: no move, aim or fire
   private obstacles: Obstacle[] = []
   setObstacles(o: Obstacle[]) { this.obstacles = o }
+  setActive(v: boolean) { this.active = v; if (!v) this.wantFire = false }
   private blocked(x: number, z: number): boolean {
     for (const o of this.obstacles) {
       if (Math.abs(x - o.x) < o.hw + HERO_R && Math.abs(z - o.z) < o.hd + HERO_R) return true
@@ -43,7 +45,8 @@ export class HeroController {
   private flat(v: Vector3): Vector3 { v.y = 0; return v.length() > 0 ? v.normalize() : v }
 
   update(dt: number): HeroShot | null {
-    this.weapon.tick(dt)
+    this.weapon.tick(dt) // weapon keeps recharging even while dead
+    if (!this.active) { this.wantFire = false; return null } // dead: ignore all input
     const topMode = this.rig.mode === 'top'
 
     // movement basis: relative to the active camera's screen orientation

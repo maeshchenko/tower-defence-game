@@ -562,6 +562,7 @@ scene.onBeforeRenderObservable.add(() => {
   const simScale = hitstop.update(realDt * 1000)
   const dt = realDt * simScale
   heroState.tick(dt)
+  heroCtrl.setActive(heroState.alive) // dead hero can't move/aim/shoot (was invisible-but-active)
   updateProjectiles(dt)
   if (!over && state.phase === 'wave') {
     for (const e of wm.update(dt)) { const v = new EnemyView(scene, assets, e); env.addShadowCaster(v.mesh); views.set(e, v) }
