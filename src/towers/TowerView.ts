@@ -7,6 +7,8 @@ const COLOR = {
   slow: new Color3(0.25,0.45,0.9),
   sniper: new Color3(0.15,0.15,0.2),
 }
+// correction between the model's forward axis and our atan2(dx,dz) heading; tuned in-browser
+const TOWER_FACING_OFFSET = 0
 
 // unit-radius circle points (closed loop) in the XZ plane, reused for every ring
 const RING_POINTS: Vector3[] = []
@@ -36,6 +38,10 @@ export class TowerView {
     const r = this.tower.stats.range
     this.ring.scaling.set(r, 1, r)
   }
+  // point the tower's front at its current heading (tower.yaw). Offset corrects
+  // for the model's own forward axis; tuned so the barrel faces the target.
+  applyYaw(yaw: number) { this.mesh.rotation.y = yaw + TOWER_FACING_OFFSET }
+
   // recoil pulse on fire: a quick downward squash that springs back
   kickback() {
     const base = (this.mesh.metadata?.baseScale as number) ?? this.mesh.scaling.x

@@ -578,6 +578,7 @@ scene.onBeforeRenderObservable.add(() => {
       fireTowerShot(shot.from, shot.target, firing?.kind ?? 'cannon', shot.damage, shot.slow) // damage lands on arrival
       if (firing) towerViews.get(firing)?.kickback() // recoil pulse
     }
+    for (const [t, v] of towerViews) v.applyYaw(t.yaw) // rotate barrels toward their targets
     // keep auto-fire: shoot the nearest enemy within range
     baseFireTimer -= dt
     if (baseFireTimer <= 0) {
