@@ -24,4 +24,12 @@ describe('Enemy', () => {
     e.takeDamage(30)
     expect(e.hp).toBe(0); expect(e.alive).toBe(false)
   })
+  it('applySlow reduces effective speed temporarily', () => {
+    const e = new Enemy(ENEMY_DEFS.normal, [{x:0,y:0,z:0},{x:100,y:0,z:0}])
+    e.applySlow(0.5, 1)
+    e.update(1) // speed 2 * 0.5 = 1
+    expect(e.pos.x).toBeCloseTo(1)
+    e.update(1) // slow expired -> full speed 2
+    expect(e.pos.x).toBeCloseTo(3)
+  })
 })
