@@ -2,9 +2,9 @@ import { Scene, TransformNode, AnimationGroup } from '@babylonjs/core'
 import { Enemy } from './Enemy'
 import { AssetManager } from '../rendering/AssetManager'
 
-// KayKit characters' forward axis vs our atan2(dx,dz) convention.
-// 0 = model faces +Z. If they walk backwards in-game, this is flipped to Math.PI.
-const FACING_OFFSET = 0
+// KayKit characters' visual front is local -Z (verified in-browser), while
+// atan2(dx,dz) aligns local +Z to the movement vector — so add PI to face forward.
+const FACING_OFFSET = Math.PI
 
 export class EnemyView {
   readonly mesh: TransformNode
