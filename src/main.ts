@@ -138,6 +138,7 @@ let heroBusy = false // an attack one-shot is playing; don't override with locom
 function makeHero() {
   heroBody = assets.instance('hero.knight')
   heroBody.getChildMeshes().forEach((m) => (m.isPickable = false))
+  env.addShadowCaster(heroBody)
   heroClips = new ClipPlayer(assets.getAnimationGroups(heroBody))
   heroClips.play(/idle/i)
 }
@@ -235,6 +236,7 @@ function buildEnvironment() {
   const keep = assets.instance('base.keep')
   keep.position.set(level.base.x, 0, level.base.z)
   keep.getChildMeshes().forEach((m) => (m.isPickable = false))
+  env.addShadowCaster(keep)
   envProps.push(keep)
 
   // scatter decor + obstacles to make the field feel like a real place
@@ -256,6 +258,7 @@ function buildProp(p: Prop) {
     const base = node.scaling.x
     node.scaling.set(base * (p.w / 1.5), base * (p.h / 1.5), base * (p.d / 1.5))
     node.getChildMeshes().forEach((m) => { m.isPickable = false })
+    env.addShadowCaster(node)
     envProps.push(node)
     return
   }
@@ -544,7 +547,7 @@ scene.onPointerDown = (_evt, pick) => {
   if (!cell) return
   if (cell.occupied) { flash('Клетка занята'); sfx.deny(); return }
   const t = tm.build(selectedKind, cell)
-  if (t) { towerViews.set(t, new TowerView(scene, assets, t)); sfx.build() }
+  if (t) { const tv = new TowerView(scene, assets, t); env.addShadowCaster(tv.mesh); towerViews.set(t, tv); sfx.build() }
   else { flash('Не хватает золота'); sfx.deny() }
 }
 
@@ -554,7 +557,7 @@ scene.onBeforeRenderObservable.add(() => {
   updateProjectiles(dt)
   updateFlashes(dt)
   if (!over && state.phase === 'wave') {
-    for (const e of wm.update(dt)) views.set(e, new EnemyView(scene, assets, e))
+    for (const e of wm.update(dt)) { const v = new EnemyView(scene, assets, e); env.addShadowCaster(v.mesh); views.set(e, v) }
     for (const e of [...wm.active]) {
       e.update(dt)
       if (e.reachedBase) { state.damageBase(1); removeHealthBar(e); views.get(e)?.dispose(); views.delete(e); wm.remove(e); continue }
