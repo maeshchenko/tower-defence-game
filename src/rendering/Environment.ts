@@ -15,7 +15,6 @@ export class Environment {
   private shadowGen: ShadowGenerator | null = null
   private ssao: SSAO2RenderingPipeline | null = null
   private casters: TransformNode[] = []
-  private receivers: AbstractMesh[] = []
 
   constructor(private scene: Scene, private fill: HemisphericLight, cfg: QualityConfig) {
     // warm directional sun (key light) — angled for short, readable shadows
@@ -53,12 +52,19 @@ export class Environment {
 
   setReceiver(mesh: AbstractMesh): void {
     mesh.receiveShadows = true
-    if (!this.receivers.includes(mesh)) this.receivers.push(mesh)
   }
 
   addShadowCaster(node: TransformNode): void {
     if (!this.casters.includes(node)) this.casters.push(node)
     if (this.shadowGen) for (const m of node.getChildMeshes(false)) this.shadowGen.addShadowCaster(m, true)
+  }
+
+  // stop a node casting and drop it from the tracked list, so per-spawn casters
+  // (enemies, per-map props) don't accumulate disposed references across a session
+  removeShadowCaster(node: TransformNode): void {
+    const i = this.casters.indexOf(node)
+    if (i >= 0) this.casters.splice(i, 1)
+    if (this.shadowGen) for (const m of node.getChildMeshes(false)) this.shadowGen.removeShadowCaster(m)
   }
 
   applyQuality(cfg: QualityConfig): void {

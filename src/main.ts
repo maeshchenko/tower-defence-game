@@ -276,14 +276,14 @@ function buildProp(p: Prop) {
 
 // tear down the current map and load map i (gold/lives carry over via shared GameState)
 function loadMap(i: number) {
-  for (const v of views.values()) v.dispose(); views.clear()
-  for (const c of corpses) c.dispose(); corpses.length = 0
+  for (const v of views.values()) { env.removeShadowCaster(v.mesh); v.dispose() } views.clear()
+  for (const c of corpses) { env.removeShadowCaster(c.mesh); c.dispose() } corpses.length = 0
   clearHealthBars()
-  for (const v of towerViews.values()) v.dispose(); towerViews.clear()
+  for (const v of towerViews.values()) { env.removeShadowCaster(v.mesh); v.dispose() } towerViews.clear()
   for (const p of projectiles) p.mesh.dispose(false, true); projectiles.length = 0
   for (const f of flashes) { f.mesh.dispose(); f.mat.dispose() } flashes.length = 0
   for (const m of envMeshes) m.dispose(); envMeshes = []
-  for (const n of envProps) n.dispose(false, true); envProps = []
+  for (const n of envProps) { env.removeShadowCaster(n); n.dispose(false, true) } envProps = []
   mapIndex = i
   level = MAPS[i]
   wm = new WaveManager(level.path, WaveManager.mapWaves(i))
@@ -431,6 +431,7 @@ function applyHit(target: Enemy, damage: number, slow?: number) {
   if (!target.alive) {
     state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty }); sfx.death()
     const v = views.get(target)!; views.delete(target); wm.remove(target); removeHealthBar(target)
+    env.removeShadowCaster(v.mesh) // stop casting as it dies (mesh disposes after the death clip)
     // play the death animation as a corpse, then self-remove from the list
     corpses.push(v); v.die(() => { const i = corpses.indexOf(v); if (i >= 0) corpses.splice(i, 1) })
   }
@@ -560,7 +561,7 @@ scene.onBeforeRenderObservable.add(() => {
     for (const e of wm.update(dt)) { const v = new EnemyView(scene, assets, e); env.addShadowCaster(v.mesh); views.set(e, v) }
     for (const e of [...wm.active]) {
       e.update(dt)
-      if (e.reachedBase) { state.damageBase(1); removeHealthBar(e); views.get(e)?.dispose(); views.delete(e); wm.remove(e); continue }
+      if (e.reachedBase) { state.damageBase(1); removeHealthBar(e); const rv = views.get(e); if (rv) { env.removeShadowCaster(rv.mesh); rv.dispose() } views.delete(e); wm.remove(e); continue }
       views.get(e)?.sync()
       updateHealthBar(e)
       const atk = e.attack(dt, heroCtrl.pos) // returns damage when in range + off cooldown
