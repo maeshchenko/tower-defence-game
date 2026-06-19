@@ -10,7 +10,7 @@ export class BuildMenu {
     const kinds: TowerKind[] = ['cannon', 'slow', 'sniper']
     for (const k of kinds) {
       const b = document.createElement('button')
-      b.innerHTML = `${k}<br><b>${this.costs[k]}g</b>`
+      b.innerHTML = `${k}<br><b>${this.costs[k]}</b>`
       b.style.cssText = 'padding:8px 14px;font-family:monospace;cursor:pointer;text-align:center;line-height:1.3'
       b.onclick = () => {
         this.selected = this.selected === k ? null : k

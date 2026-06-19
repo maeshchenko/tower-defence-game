@@ -520,7 +520,7 @@ document.body.appendChild(waveInfo)
 const legend = document.createElement('div')
 legend.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font-family:monospace;font-size:13px;line-height:1.5;text-align:right;text-shadow:0 0 3px #000;pointer-events:none'
 legend.innerHTML =
-  `cannon ${TOWER_DEFS.cannon[0].cost}g · slow ${TOWER_DEFS.slow[0].cost}g · sniper ${TOWER_DEFS.sniper[0].cost}g<br>` +
+  `cannon ${TOWER_DEFS.cannon[0].cost} · slow ${TOWER_DEFS.slow[0].cost} · sniper ${TOWER_DEFS.sniper[0].cost}<br>` +
   `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/сзади (3-е лицо)`
 document.body.appendChild(legend)
 
