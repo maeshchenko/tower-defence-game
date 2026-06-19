@@ -90,7 +90,9 @@ function syncHero() {
 }
 
 let selectedKind: TowerKind | null = null
-const buildMenu = new BuildMenu((k) => { selectedKind = k }); buildMenu.mount()
+const buildMenu = new BuildMenu((k) => { selectedKind = k }, {
+  cannon: TOWER_DEFS.cannon[0].cost, slow: TOWER_DEFS.slow[0].cost, sniper: TOWER_DEFS.sniper[0].cost,
+}); buildMenu.mount()
 
 const views = new Map<Enemy, EnemyView>()
 const towerViews = new Map<Tower, TowerView>()

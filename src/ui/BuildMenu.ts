@@ -3,14 +3,15 @@ import { TowerKind } from '../towers/TowerTypes'
 export class BuildMenu {
   private root!: HTMLElement
   private selected: TowerKind | null = null
-  constructor(private onSelect: (k: TowerKind | null) => void) {}
+  // costs: build price per tower kind, shown on each button
+  constructor(private onSelect: (k: TowerKind | null) => void, private costs: Record<TowerKind, number>) {}
   mount() {
     this.root = document.getElementById('buildmenu')!
     const kinds: TowerKind[] = ['cannon', 'slow', 'sniper']
     for (const k of kinds) {
       const b = document.createElement('button')
-      b.textContent = k
-      b.style.cssText = 'padding:8px 12px;font-family:monospace;cursor:pointer'
+      b.innerHTML = `${k}<br><b>${this.costs[k]}g</b>`
+      b.style.cssText = 'padding:8px 14px;font-family:monospace;cursor:pointer;text-align:center;line-height:1.3'
       b.onclick = () => {
         this.selected = this.selected === k ? null : k
         this.onSelect(this.selected)
