@@ -1,0 +1,34 @@
+{
+  "name": "tower-defence-game",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maeshchenko/tower-defence-game.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/maeshchenko/tower-defence-game/issues"
+  },
+  "homepage": "https://github.com/maeshchenko/tower-defence-game#readme",
+  "dependencies": {
+    "@babylonjs/core": "^9.13.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
+  }
+}
