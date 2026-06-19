@@ -9,6 +9,7 @@ export class HUD {
   mount() {
     this.el = document.getElementById('hud')!
     this.cross = document.getElementById('crosshair')!
+    this.cross.style.display = 'none' // no crosshair; hero shoots forward where it faces
     this.end = document.getElementById('endscreen')!
   }
   setCrosshair(v: boolean) { this.cross.style.display = v ? 'block' : 'none' }

@@ -74,7 +74,9 @@ export class HeroController {
         ? this.flat(new Vector3(pick.pickedPoint.x - this.pos.x, 0, pick.pickedPoint.z - this.pos.z))
         : fwd
     } else {
-      aim = this.rig.heroCam.getDirection(Vector3.Forward()).normalize()
+      // third-person: the follow camera looks down at the hero, so flatten its
+      // forward to keep shots horizontal (otherwise they dive into the ground)
+      aim = this.flat(this.rig.heroCam.getDirection(Vector3.Forward()))
     }
     const aimFlat = this.flat(aim.clone())
     this.yaw = Math.atan2(aimFlat.x, aimFlat.z)

@@ -441,7 +441,7 @@ function startNextWave() {
 addEventListener('keydown', (e) => {
   if (e.key === 'Tab') {
     e.preventDefault(); rig.toggle()
-    hud.setCrosshair(rig.mode === 'hero'); buildMenu.setVisible(rig.mode === 'top')
+    hud.setCrosshair(false); buildMenu.setVisible(rig.mode === 'top')
   }
   if (e.key === 'Enter') startNextWave()
   if (e.key === 'm' || e.key === 'M' || e.key === 'ь') sfx.muted = !sfx.muted // mute toggle
