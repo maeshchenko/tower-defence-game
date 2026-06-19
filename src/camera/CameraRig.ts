@@ -14,12 +14,16 @@ export class CameraRig {
     this.topCam = new ArcRotateCamera('top', -Math.PI/2, 0.6, 45, Vector3.Zero(), scene)
     this.topCam.attachControl(canvas, true)
     this.heroCam = new UniversalCamera('hero', new Vector3(heroStart.x, HERO_EYE, heroStart.z), scene)
-    this.heroCam.checkCollisions = true
     this.heroCam.applyGravity = false
-    this.heroCam.ellipsoid = new Vector3(0.3, 0.55, 0.3)
     this.heroCam.minZ = 0.05
+    // movement is driven by HeroController (which owns the hero's world position),
+    // so disable the camera's own WASD/arrow handling — it only does mouse-look.
+    this.heroCam.keysUp = []; this.heroCam.keysDown = []; this.heroCam.keysLeft = []; this.heroCam.keysRight = []
     scene.activeCamera = this.topCam
   }
+
+  // place the FPS camera at the hero's world position (called every frame)
+  syncHero(p: Vec3) { this.heroCam.position.set(p.x, HERO_EYE, p.z) }
   toggle() {
     if (this.mode === 'top') {
       this.mode = 'hero'

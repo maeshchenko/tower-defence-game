@@ -19,7 +19,8 @@ import { BuildMenu } from './ui/BuildMenu'
 const canvas = document.getElementById('app') as HTMLCanvasElement
 const engine = new Engine(canvas, true)
 const scene = new Scene(engine)
-new HemisphericLight('l', new Vector3(0,1,0), scene)
+const light = new HemisphericLight('l', new Vector3(0, 1, 0), scene)
+light.specular = new Color3(0, 0, 0) // no shiny glare on the ground
 
 const ground = MeshBuilder.CreateGround('ground', { width: 40, height: 40 }, scene)
 const gm = new StandardMaterial('g', scene); gm.diffuseColor = new Color3(0.2,0.45,0.2)
@@ -52,6 +53,20 @@ const heroState = new HeroState(bus)
 const heroWeapon = new HeroWeapon()
 const heroCtrl = new HeroController(scene, rig, heroWeapon)
 const hud = new HUD(state, heroState); hud.mount()
+
+// visible hero body (seen from the top-down view; hidden in first-person)
+const heroMat = new StandardMaterial('heromat', scene)
+heroMat.diffuseColor = new Color3(0.95, 0.85, 0.3); heroMat.emissiveColor = new Color3(0.35, 0.3, 0.07)
+const heroBody = MeshBuilder.CreateCapsule('herobody', { height: 1.4, radius: 0.35 }, scene)
+heroBody.material = heroMat; heroBody.isPickable = false
+const heroNose = MeshBuilder.CreateBox('heronose', { width: 0.16, height: 0.16, depth: 0.5 }, scene)
+heroNose.material = heroMat; heroNose.isPickable = false; heroNose.parent = heroBody; heroNose.position.set(0, 0.25, 0.5)
+function syncHero() {
+  heroBody.position.set(heroCtrl.pos.x, 0.7, heroCtrl.pos.z)
+  heroBody.rotation.y = heroCtrl.yaw
+  heroBody.setEnabled(rig.mode !== 'hero') // don't render your own body in first-person
+  rig.syncHero(heroCtrl.pos)
+}
 
 let selectedKind: TowerKind | null = null
 const buildMenu = new BuildMenu((k) => { selectedKind = k }); buildMenu.mount()
@@ -91,7 +106,8 @@ function loadMap(i: number) {
   wm = new WaveManager(level.path, WaveManager.mapWaves(i))
   tm = new TowerManager(state, level)
   buildEnvironment()
-  rig.setHeroPosition({ x: level.base.x, y: 0, z: level.base.z - 3 })
+  heroCtrl.pos = { x: level.base.x, y: 0, z: level.base.z - 3 }
+  syncHero()
   selectedKind = null
   nextWaveTimer = 8
 }
@@ -113,8 +129,9 @@ for (const k of ['cannon', 'slow', 'sniper'] as TowerKind[]) {
 const heroShotMat = new StandardMaterial('shot_hero', scene)
 heroShotMat.emissiveColor = new Color3(0.6, 1, 0.5); heroShotMat.diffuseColor = new Color3(0.6, 1, 0.5)
 
-// a projectile either homes onto a target enemy, or flies straight along dir until ttl runs out
-interface Projectile { mesh: Mesh; target?: Enemy; dir?: Vector3; ttl: number }
+// a projectile homes onto a target enemy (carrying damage, applied on arrival),
+// or flies straight along dir until ttl runs out (a hero miss — no damage)
+interface Projectile { mesh: Mesh; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number }
 const projectiles: Projectile[] = []
 const SHOT_SPEED = 18
 function spawnBall(x: number, y: number, z: number, mat: StandardMaterial, diameter: number): Mesh {
@@ -122,14 +139,24 @@ function spawnBall(x: number, y: number, z: number, mat: StandardMaterial, diame
   ball.material = mat; ball.isPickable = false; ball.position.set(x, y, z)
   return ball
 }
-function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: TowerKind) {
+function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: TowerKind, damage: number, slow?: number) {
   const ball = spawnBall(from.x, 1.2, from.z, SHOT_MAT[kind], kind === 'sniper' ? 0.35 : 0.5)
-  projectiles.push({ mesh: ball, target, ttl: 3 })
+  projectiles.push({ mesh: ball, target, ttl: 3, damage, slow })
 }
-function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, hit: Enemy | null) {
+const HERO_HIT_R2 = 1.0 // squared hit radius for the hero's ballistic shots
+function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, damage: number) {
   const ball = spawnBall(from.x, from.y, from.z, heroShotMat, 0.22)
-  if (hit) projectiles.push({ mesh: ball, target: hit, ttl: 3 })
-  else projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 0.6 })
+  projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage })
+}
+// damage is applied here, when a projectile reaches its target — not when fired
+function applyHit(target: Enemy, damage: number, slow?: number) {
+  if (!views.has(target)) return // already dead or leaked
+  target.takeDamage(damage)
+  if (slow) target.applySlow(slow, 1.5)
+  if (!target.alive) {
+    state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty })
+    views.get(target)!.dispose(); views.delete(target); wm.remove(target)
+  }
 }
 function updateProjectiles(dt: number) {
   for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -140,25 +167,31 @@ function updateProjectiles(dt: number) {
       const tgt = new Vector3(p.target.pos.x, 0.8, p.target.pos.z) // follow the moving target
       const dir = tgt.subtract(p.mesh.position)
       const step = SHOT_SPEED * dt
-      if (dir.length() <= step) { p.mesh.dispose(); projectiles.splice(i, 1); continue }
+      if (dir.length() <= step) { // arrived — deal damage now
+        if (p.damage != null) applyHit(p.target, p.damage, p.slow)
+        p.mesh.dispose(); projectiles.splice(i, 1); continue
+      }
       p.mesh.position.addInPlace(dir.normalize().scale(step))
     } else if (p.dir) {
+      // hero ballistic shot: fly straight, hit whichever enemy it actually reaches
       p.mesh.position.addInPlace(p.dir.scale(SHOT_SPEED * dt))
+      if (p.damage != null) {
+        for (const e of views.keys()) {
+          const ep = e.pos
+          const dx = ep.x - p.mesh.position.x, dy = 0.8 - p.mesh.position.y, dz = ep.z - p.mesh.position.z
+          if (dx * dx + dy * dy + dz * dz < HERO_HIT_R2) {
+            applyHit(e, p.damage); p.mesh.dispose(); projectiles.splice(i, 1); break
+          }
+        }
+      }
     }
   }
 }
 
-// hero shot handling: spawn its visible projectile and apply damage on a hit
+// hero shot handling: spawn its visible projectile; damage lands on arrival (applyHit)
 function processHeroShot(shot: HeroShot | null) {
   if (!shot) return
-  fireHeroShot(shot.from, shot.dir, shot.hit)
-  if (shot.hit) {
-    shot.hit.takeDamage(shot.damage)
-    if (!shot.hit.alive && views.has(shot.hit)) {
-      state.addGold(shot.hit.bounty); bus.emit('enemyKilled', { bounty: shot.hit.bounty })
-      views.get(shot.hit)!.dispose(); views.delete(shot.hit); wm.remove(shot.hit)
-    }
-  }
+  fireHeroShot(shot.from, shot.dir, shot.damage)
 }
 
 // transient toast message (e.g. "Not enough gold")
@@ -175,6 +208,10 @@ function flash(msg: string) {
 let nextWaveTimer = 8 // seconds before the first wave
 function startNextWave() {
   if (over || state.phase !== 'build') return
+  if (nextWaveTimer > 0) { // reward starting early: 1 gold per second skipped
+    const bonus = Math.ceil(nextWaveTimer)
+    state.addGold(bonus); flash(`+${bonus}з за ранний старт`)
+  }
   state.startWave(); wm.startWave(state.wave - 1); nextWaveTimer = -1
 }
 
@@ -194,7 +231,7 @@ scene.onPointerDown = (_evt, pick) => {
   // upgrade if clicked an existing tower
   const clickedTower = [...towerViews].find(([, v]) => v.mesh === pick.pickedMesh)
   if (clickedTower) { if (tm.upgrade(clickedTower[0])) clickedTower[1].sync(); return }
-  if (!selectedKind) return
+  if (!selectedKind) { heroCtrl.triggerFire(); return } // no tower selected -> hero shoots toward the click
   const cell = level.cellAt(pick.pickedPoint.x, pick.pickedPoint.z, 2)
   if (!cell) return
   if (cell.occupied) { flash('Клетка занята'); return }
@@ -216,27 +253,22 @@ scene.onBeforeRenderObservable.add(() => {
     }
     for (const shot of tm.update(dt, wm.active)) {
       const firing = [...towerViews.keys()].find((t) => t.pos === shot.from)
-      fireTowerShot(shot.from, shot.target, firing?.kind ?? 'cannon')
-      shot.target.takeDamage(shot.damage)
-      if (shot.slow) shot.target.applySlow(shot.slow, 1.5)
-      if (!shot.target.alive && !shot.target.reachedBase && views.has(shot.target)) {
-        state.addGold(shot.target.bounty); bus.emit('enemyKilled', { bounty: shot.target.bounty })
-        views.get(shot.target)!.dispose(); views.delete(shot.target); wm.remove(shot.target)
-      }
+      fireTowerShot(shot.from, shot.target, firing?.kind ?? 'cannon', shot.damage, shot.slow) // damage lands on arrival
     }
-    processHeroShot(heroCtrl.update(dt, [...views].map(([enemy, view]) => ({ enemy, view }))))
+    processHeroShot(heroCtrl.update(dt))
     if (wm.cleared()) {
       state.addGold(20 + state.wave * 5); state.endWave()
       const phaseAfter: string = state.phase
       if (phaseAfter === 'build') nextWaveTimer = 5 // auto-start the next wave after a short break
     }
   } else {
-    processHeroShot(heroCtrl.update(dt, []))
+    processHeroShot(heroCtrl.update(dt))
     if (!over && state.phase === 'build' && nextWaveTimer > 0) {
       nextWaveTimer -= dt
       if (nextWaveTimer <= 0) startNextWave()
     }
   }
+  syncHero()
   mapInfo.textContent = `Карта ${mapIndex + 1}/${MAPS.length}`
   waveInfo.textContent = (!over && state.phase === 'build' && nextWaveTimer > 0)
     ? `Волна ${state.wave + 1} через ${Math.ceil(nextWaveTimer)}с — Enter, чтобы раньше`
@@ -257,7 +289,7 @@ const legend = document.createElement('div')
 legend.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font-family:monospace;font-size:13px;line-height:1.5;text-align:right;text-shadow:0 0 3px #000;pointer-events:none'
 legend.innerHTML =
   `cannon ${TOWER_DEFS.cannon[0].cost}g · slow ${TOWER_DEFS.slow[0].cost}g · sniper ${TOWER_DEFS.sniper[0].cost}g<br>` +
-  `выбери башню → клик по синей клетке<br>клик по башне = апгрейд<br>волны идут сами · Enter — начать сразу<br>Tab — герой/обзор · в герое: WASD + мышь + ЛКМ`
+  `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/от лица`
 document.body.appendChild(legend)
 
 loadMap(0)
