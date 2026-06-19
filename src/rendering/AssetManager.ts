@@ -1,6 +1,6 @@
 import {
   Scene, TransformNode, AssetContainer, LoadAssetContainerAsync,
-  AnimationGroup, AbstractMesh,
+  AnimationGroup, AbstractMesh, StandardMaterial, Color3,
 } from '@babylonjs/core'
 import { MODELS, normalizeScale } from './models'
 
@@ -40,7 +40,17 @@ export class AssetManager {
     const s = normalizeScale(h, def.targetHeight)
     root.scaling.setAll(s)
     if (def.yaw) root.rotation.y = def.yaw
+    if (def.tint) this.applyTint(root, def.tint)
     return root
+  }
+
+  // Paint every child mesh a flat colour (used for Kenney tower/base GLBs whose
+  // colormap atlas mis-samples under the loader). One shared material per instance.
+  private applyTint(root: TransformNode, tint: [number, number, number]): void {
+    const mat = new StandardMaterial('tint:' + root.name, this.scene)
+    mat.diffuseColor = new Color3(tint[0], tint[1], tint[2])
+    mat.specularColor = new Color3(0, 0, 0) // flat, no plastic glare
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) m.material = mat
   }
 
   // Returns the independent animation groups captured on this instance.
