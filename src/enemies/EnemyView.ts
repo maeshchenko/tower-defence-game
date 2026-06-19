@@ -3,9 +3,9 @@ import { Enemy } from './Enemy'
 import { AssetManager } from '../rendering/AssetManager'
 import { ClipPlayer } from '../rendering/ClipPlayer'
 
-// KayKit skeletons' visual front is local -Z, while atan2(dx,dz) aligns local
-// +Z to the movement vector — so add PI to face the direction of travel.
-const FACING_OFFSET = Math.PI
+// KayKit characters' visual front is local +Z, and atan2(dx,dz) already aligns
+// local +Z to the movement vector — so no offset; the skeleton faces where it walks.
+const FACING_OFFSET = 0
 
 export class EnemyView {
   readonly mesh: TransformNode
