@@ -7,8 +7,10 @@ import { MODELS, normalizeScale } from './models'
 // Loads each unique GLB once into an AssetContainer, then clones per request.
 export class AssetManager {
   private containers = new Map<string, AssetContainer>()
+  private scene!: Scene
 
   async preload(scene: Scene): Promise<void> {
+    this.scene = scene
     const urls = new Set<string>()
     for (const def of Object.values(MODELS)) {
       urls.add(def.url)
@@ -24,12 +26,16 @@ export class AssetManager {
   instance(key: string): TransformNode {
     const def = MODELS[key]
     if (!def) throw new Error('unknown model key: ' + key)
-    const root = new TransformNode('model:' + key, this.cloneInto(def.url).getScene())
-    const urls = [def.url, ...(def.parts ?? [])]
-    for (const url of urls) {
+    const root = new TransformNode('model:' + key, this.scene)
+    const allGroups: AnimationGroup[] = []
+    for (const url of [def.url, ...(def.parts ?? [])]) {
       const node = this.cloneInto(url)
       node.parent = root
+      const groups = node.metadata?.animationGroups as AnimationGroup[] | undefined
+      if (groups) allGroups.push(...groups)
     }
+    root.metadata = { animationGroups: allGroups }
+    // measureHeight is called before root.scaling is applied, so bounding boxes are at scale 1.
     const h = this.measureHeight(root)
     const s = normalizeScale(h, def.targetHeight)
     root.scaling.setAll(s)
