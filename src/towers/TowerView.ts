@@ -1,4 +1,4 @@
-import { Scene, MeshBuilder, Color3, Vector3, TransformNode, LinesMesh } from '@babylonjs/core'
+import { Scene, MeshBuilder, Color3, Vector3, TransformNode, LinesMesh, Animation } from '@babylonjs/core'
 import { Tower } from './Tower'
 import { AssetManager } from '../rendering/AssetManager'
 
@@ -36,5 +36,21 @@ export class TowerView {
     const r = this.tower.stats.range
     this.ring.scaling.set(r, 1, r)
   }
+  // recoil pulse on fire: a quick downward squash that springs back
+  kickback() {
+    const base = (this.mesh.metadata?.baseScale as number) ?? this.mesh.scaling.x
+    const grow = 1 + this.tower.level * 0.15
+    const s = base * grow
+    const keys = [
+      { frame: 0, value: new Vector3(s, s, s) },
+      { frame: 2, value: new Vector3(s * 1.08, s * 0.82, s * 1.08) },
+      { frame: 8, value: new Vector3(s, s, s) },
+    ]
+    const anim = new Animation('kick', 'scaling', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT)
+    anim.setKeys(keys)
+    this.mesh.animations = [anim]
+    this.mesh.getScene().beginAnimation(this.mesh, 0, 8, false)
+  }
+
   dispose() { this.mesh.dispose(false, true); this.ring.dispose() }
 }
