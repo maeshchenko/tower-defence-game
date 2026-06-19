@@ -37,7 +37,7 @@ for (const [x,z,w,d] of [[0,20,40,1],[0,-20,40,1],[20,0,1,40],[-20,0,1,40]] as c
 
 const bus = new EventBus()
 const MAPS = Level.maps()
-const state = new GameState(bus, { totalWaves: 2 }) // 2 waves per map
+const state = new GameState(bus, { totalWaves: 10 }) // 10 waves per map
 
 // shared environment materials
 const roadMat = new StandardMaterial('roadmat', scene); roadMat.diffuseColor = new Color3(0.35, 0.3, 0.25)

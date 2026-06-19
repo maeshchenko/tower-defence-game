@@ -27,4 +27,12 @@ describe('WaveManager', () => {
   it('demoWaves has 10 waves', () => {
     expect(WaveManager.demoWaves().length).toBe(10)
   })
+  it('mapWaves has 10 escalating waves; later maps are harder', () => {
+    const m0 = WaveManager.mapWaves(0)
+    expect(m0.length).toBe(10)
+    // wave 10 has more 'normal' enemies than wave 1 on the same map
+    expect(m0[9][0].count).toBeGreaterThan(m0[0][0].count)
+    // map 1 wave 1 is harder than map 0 wave 1
+    expect(WaveManager.mapWaves(1)[0][0].count).toBeGreaterThan(m0[0][0].count)
+  })
 })
