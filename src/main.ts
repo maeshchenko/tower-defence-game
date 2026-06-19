@@ -28,6 +28,8 @@ import { Tower } from './towers/Tower'
 import { TowerKind, TOWER_DEFS } from './towers/TowerTypes'
 import { HUD } from './ui/HUD'
 import { BuildMenu } from './ui/BuildMenu'
+import { Speed } from './ui/Speed'
+import { TowerPanel } from './ui/TowerPanel'
 
 const canvas = document.getElementById('app') as HTMLCanvasElement
 const engine = new Engine(canvas, true)
@@ -128,7 +130,9 @@ const rig = new CameraRig(scene, canvas, { x: 0, y: 0, z: 0 })
 const heroState = new HeroState(bus)
 const heroWeapon = new HeroWeapon()
 const heroCtrl = new HeroController(scene, rig, heroWeapon)
-const hud = new HUD(state, heroState); hud.mount()
+const speed = new Speed()
+const hud = new HUD(state, heroState, speed); hud.mount()
+const towerPanel = new TowerPanel(); towerPanel.mount()
 
 // KayKit Knight model — created after assets are preloaded in boot()
 // The Knight's visual front is local +Z and heroCtrl.yaw = atan2(aim.x, aim.z)
@@ -280,6 +284,7 @@ function buildProp(p: Prop) {
 
 // tear down the current map and load map i (gold/lives carry over via shared GameState)
 function loadMap(i: number) {
+  deselectTower(); hoveredView = null; updateBuildPreview(null) // clear UI selection from the old map
   for (const v of views.values()) { env.removeShadowCaster(v.mesh); v.dispose() } views.clear()
   for (const c of corpses) { env.removeShadowCaster(c.mesh); c.dispose() } corpses.length = 0
   clearHealthBars()
@@ -392,6 +397,7 @@ function floatText(x: number, y: number, z: number, text: string, color: string)
 // floating enemy health bars (DOM elements projected above each live enemy)
 const healthBars = new Map<Enemy, HTMLDivElement>()
 function updateHealthBar(e: Enemy) {
+  if (e.hp >= e.maxHp) { const b = healthBars.get(e); if (b) b.style.display = 'none'; return } // only when damaged
   const cam = scene.activeCamera; if (!cam) return
   const w = engine.getRenderWidth(), h = engine.getRenderHeight()
   const p = Vector3.Project(new Vector3(e.pos.x, 2.1, e.pos.z), Matrix.Identity(), scene.getTransformMatrix(), cam.viewport.toGlobal(w, h))
@@ -526,6 +532,7 @@ addEventListener('keydown', (e) => {
     hud.setCrosshair(false); buildMenu.setVisible(rig.mode === 'top')
   }
   if (e.key === 'Enter') startNextWave()
+  if (e.key === ' ') { e.preventDefault(); speed.togglePause(); hud.update() } // Space = pause
   if (e.key === 'm' || e.key === 'M' || e.key === 'ь') sfx.muted = !sfx.muted // mute toggle
   if (e.key === 'q' || e.key === 'Q' || e.key === 'й') {
     quality = nextPreset(quality)
@@ -537,32 +544,83 @@ addEventListener('keydown', (e) => {
 })
 
 // build / upgrade on click in top mode
+// --- tower selection + hover rings + build-range preview (P4 readability) ---
+let selectedTower: Tower | null = null
+let hoveredView: TowerView | null = null
+function refreshRings() { for (const [t, v] of towerViews) v.setRingVisible(t === selectedTower || v === hoveredView) }
+function refreshTowerPanel() {
+  if (!selectedTower) { towerPanel.hide(); return }
+  const t = selectedTower, s = t.stats, defs = TOWER_DEFS[t.kind]
+  const upgradeCost = t.level < defs.length - 1 ? defs[t.level + 1].cost : null
+  towerPanel.show(
+    { kind: t.kind, level: t.level, maxLevel: t.maxLevel, damage: s.damage, range: s.range, fireRate: s.fireRate, slow: s.slow, upgradeCost, sellValue: tm.sellValue(t) },
+    () => { if (tm.upgrade(t)) { towerViews.get(t)?.sync(); refreshTowerPanel() } else { flash('Не хватает золота'); sfx.deny() } },
+    () => {
+      tm.sell(t); const v = towerViews.get(t)
+      if (v) { env.removeShadowCaster(v.mesh); v.dispose(); towerViews.delete(t) }
+      selectedTower = null; towerPanel.hide(); refreshRings(); sfx.build()
+    },
+  )
+}
+function selectTower(t: Tower) { selectedTower = t; refreshRings(); refreshTowerPanel() }
+function deselectTower() { selectedTower = null; towerPanel.hide(); refreshRings() }
+
+// translucent ring that previews the selected tower kind's range at the hovered cell
+let previewRing: Mesh | null = null
+const previewMat = new StandardMaterial('previewRing', scene)
+previewMat.emissiveColor = new Color3(0.6, 0.9, 1); previewMat.disableLighting = true; previewMat.alpha = 0.5
+function updateBuildPreview(point: { x: number; z: number } | null) {
+  const cell = selectedKind && point ? level.cellAt(point.x, point.z, 2) : undefined
+  if (!cell || cell.occupied) { if (previewRing) previewRing.isVisible = false; return }
+  if (!previewRing) {
+    previewRing = MeshBuilder.CreateTorus('previewRing', { diameter: 2, thickness: 0.08, tessellation: 48 }, scene)
+    previewRing.material = previewMat; previewRing.isPickable = false
+  }
+  const r = TOWER_DEFS[selectedKind!][0].range
+  previewRing.position.set(cell.pos.x, 0.12, cell.pos.z)
+  previewRing.scaling.set(r, 1, r)
+  previewRing.isVisible = true
+}
+
+function towerAt(pick: { pickedMesh: unknown } | null | undefined): Tower | null {
+  if (!pick?.pickedMesh) return null
+  const hit = [...towerViews].find(([, v]) => { let n = pick.pickedMesh as any; while (n) { if (n === v.mesh) return true; n = n.parent } return false })
+  return hit?.[0] ?? null
+}
+
+scene.onPointerMove = (_evt, pick) => {
+  if (rig.mode !== 'top') return
+  const t = towerAt(pick)
+  hoveredView = t ? towerViews.get(t) ?? null : null
+  refreshRings()
+  updateBuildPreview(pick?.pickedPoint ?? null)
+}
+
 scene.onPointerDown = (_evt, pick) => {
   if (rig.mode !== 'top' || over) return
   if (!pick?.pickedPoint) return
-  // upgrade if clicked an existing tower
-  const clickedTower = [...towerViews].find(([, v]) => {
-    let n = pick.pickedMesh as any
-    while (n) { if (n === v.mesh) return true; n = n.parent }
-    return false
-  })
-  if (clickedTower) { if (tm.upgrade(clickedTower[0])) clickedTower[1].sync(); return }
-  if (!selectedKind) { heroCtrl.triggerFire(); return } // no tower selected -> hero shoots toward the click
-  const cell = level.cellAt(pick.pickedPoint.x, pick.pickedPoint.z, 2)
-  if (!cell) return
-  if (cell.occupied) { flash('Клетка занята'); sfx.deny(); return }
-  const t = tm.build(selectedKind, cell)
-  if (t) { const tv = new TowerView(scene, assets, t); env.addShadowCaster(tv.mesh); towerViews.set(t, tv); sfx.build() }
-  else { flash('Не хватает золота'); sfx.deny() }
+  const clicked = towerAt(pick)
+  if (clicked) { selectTower(clicked); return } // select -> panel shows upgrade/sell
+  if (selectedKind) {
+    const cell = level.cellAt(pick.pickedPoint.x, pick.pickedPoint.z, 2)
+    if (!cell) { deselectTower(); return }
+    if (cell.occupied) { flash('Клетка занята'); sfx.deny(); return }
+    const t = tm.build(selectedKind, cell)
+    if (t) { const tv = new TowerView(scene, assets, t); env.addShadowCaster(tv.mesh); towerViews.set(t, tv); sfx.build() }
+    else { flash('Не хватает золота'); sfx.deny() }
+    return
+  }
+  if (selectedTower) { deselectTower(); return } // click away to deselect
+  heroCtrl.triggerFire() // otherwise the hero shoots toward the click
 }
 
 scene.onBeforeRenderObservable.add(() => {
   // real time drives FX (shake/particles); sim dt is frozen to 0 during a hitstop
   const realDt = engine.getDeltaTime() / 1000
   const simScale = hitstop.update(realDt * 1000)
-  const dt = realDt * simScale
+  const dt = realDt * simScale * speed.scale // pause (0) / 1×/2×/3× scale the sim; FX stay real-time
   heroState.tick(dt)
-  heroCtrl.setActive(heroState.alive) // dead hero can't move/aim/shoot (was invisible-but-active)
+  heroCtrl.setActive(heroState.alive && !speed.paused) // dead OR paused -> no move/aim/shoot
   updateProjectiles(dt)
   if (!over && state.phase === 'wave') {
     for (const e of wm.update(dt)) { const v = new EnemyView(scene, assets, e); env.addShadowCaster(v.mesh); views.set(e, v) }
@@ -609,26 +667,23 @@ scene.onBeforeRenderObservable.add(() => {
   const activeCam = scene.activeCamera as { targetScreenOffset?: { set(x: number, y: number): void } } | null
   activeCam?.targetScreenOffset?.set(off.x, off.y)
   mapInfo.textContent = `Карта ${mapIndex + 1}/${MAPS.length}`
-  waveInfo.textContent = (!over && state.phase === 'build' && nextWaveTimer > 0)
-    ? `Волна ${state.wave + 1} через ${Math.ceil(nextWaveTimer)}с — Enter, чтобы раньше`
-    : ''
+  const showPreview = !over && state.phase === 'build' && nextWaveTimer > 0
+  hud.setWavePreview(showPreview ? wm.peek(state.wave).map((g) => ({ kind: g.kind, count: g.count })) : null, state.wave + 1, nextWaveTimer)
   hud.update()
 })
 
-// map indicator + next-wave countdown banner (top center)
+// map indicator (top center)
 const mapInfo = document.createElement('div')
 mapInfo.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);color:#fff;font-family:monospace;font-size:16px;text-shadow:0 0 4px #000;pointer-events:none'
 document.body.appendChild(mapInfo)
-const waveInfo = document.createElement('div')
-waveInfo.style.cssText = 'position:fixed;top:34px;left:50%;transform:translateX(-50%);color:#ffd24d;font-family:monospace;font-size:15px;text-shadow:0 0 4px #000;pointer-events:none'
-document.body.appendChild(waveInfo)
 
 // controls + cost legend
 const legend = document.createElement('div')
 legend.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font-family:monospace;font-size:13px;line-height:1.5;text-align:right;text-shadow:0 0 3px #000;pointer-events:none'
 legend.innerHTML =
-  `cannon ${TOWER_DEFS.cannon[0].cost} · slow ${TOWER_DEFS.slow[0].cost} · sniper ${TOWER_DEFS.sniper[0].cost}<br>` +
-  `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/сзади (3-е лицо) · Q — качество`
+  `выбери башню → клик по клетке — строить<br>клик по башне — инфо · улучшить · продать<br>` +
+  `без выбора: клик = выстрел героя · WASD — бег<br>` +
+  `Space — пауза · 1/2/3× — скорость · Enter — волна<br>Tab — вид · Q — качество · M — звук`
 document.body.appendChild(legend)
 
 // --- front-end menus (title screen + restart) ---

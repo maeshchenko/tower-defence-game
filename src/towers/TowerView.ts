@@ -28,8 +28,10 @@ export class TowerView {
     this.ring.color = COLOR[tower.kind]
     this.ring.isPickable = false
     this.ring.position.set(tower.pos.x, 0.08, tower.pos.z)
+    this.ring.isVisible = false // shown only on hover / selection (declutter)
     this.sync()
   }
+  setRingVisible(v: boolean) { this.ring.isVisible = v }
   sync() {
     const grow = 1 + this.tower.level * 0.15
     const base = (this.mesh.metadata?.baseScale as number) ?? this.mesh.scaling.x
