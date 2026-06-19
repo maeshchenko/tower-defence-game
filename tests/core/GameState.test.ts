@@ -47,4 +47,16 @@ describe('GameState', () => {
     expect(g.phase).toBe('build')
     expect(over).not.toHaveBeenCalled()
   })
+  it('nextMap resets wave and phase but keeps gold and lives', () => {
+    const g = new GameState(new EventBus(), { gold: 250, lives: 7, totalWaves: 2 })
+    // clear both waves of a map
+    g.startWave(); g.endWave() // wave 1 -> build
+    g.startWave(); g.endWave() // wave 2 -> gameover (victory)
+    expect(g.phase).toBe('gameover')
+    g.nextMap()
+    expect(g.phase).toBe('build')
+    expect(g.wave).toBe(0)
+    expect(g.gold).toBe(250)
+    expect(g.lives).toBe(7)
+  })
 })

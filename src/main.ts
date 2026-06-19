@@ -32,39 +32,25 @@ for (const [x,z,w,d] of [[0,20,40,1],[0,-20,40,1],[20,0,1,40],[-20,0,1,40]] as c
 }
 
 const bus = new EventBus()
-const state = new GameState(bus)
-const level = Level.demo()
+const MAPS = Level.maps()
+const state = new GameState(bus, { totalWaves: 2 }) // 2 waves per map
 
-// draw a continuous road by connecting consecutive waypoints with segments
+// shared environment materials
 const roadMat = new StandardMaterial('roadmat', scene); roadMat.diffuseColor = new Color3(0.35, 0.3, 0.25)
+const cellMat = new StandardMaterial('cellmat', scene); cellMat.diffuseColor = new Color3(0.3, 0.55, 0.8); cellMat.alpha = 0.85
+const baseMat = new StandardMaterial('bm', scene); baseMat.diffuseColor = new Color3(0.2, 0.4, 0.9)
 const ROAD_W = 2.2
-for (let i = 0; i < level.path.length - 1; i++) {
-  const a = level.path[i], b = level.path[i + 1]
-  const horizontal = Math.abs(b.x - a.x) > Math.abs(b.z - a.z)
-  const len = Math.hypot(b.x - a.x, b.z - a.z) + ROAD_W // overlap corners
-  const seg = MeshBuilder.CreateBox('road', { width: horizontal ? len : ROAD_W, height: 0.1, depth: horizontal ? ROAD_W : len }, scene)
-  seg.position.set((a.x + b.x) / 2, 0.05, (a.z + b.z) / 2)
-  seg.material = roadMat
-}
-// draw build cells as visible pads (where towers can be placed)
-for (const c of level.cells) {
-  const pad = MeshBuilder.CreateBox('cell', { size: 2.2 }, scene)
-  pad.position.set(c.pos.x, 0.06, c.pos.z); pad.scaling.y = 0.04
-  const pmat = new StandardMaterial('cellmat', scene)
-  pmat.diffuseColor = new Color3(0.3, 0.55, 0.8); pmat.alpha = 0.85
-  pad.material = pmat
-}
-// base marker
-const baseMesh = MeshBuilder.CreateBox('base', { size: 2 }, scene)
-baseMesh.position.set(level.base.x, 1, level.base.z)
-const bmat = new StandardMaterial('bm', scene); bmat.diffuseColor = new Color3(0.2,0.4,0.9); baseMesh.material = bmat
 
-const rig = new CameraRig(scene, canvas, { x: level.base.x, y: 0, z: level.base.z - 3 })
+let mapIndex = 0
+let level!: Level
+let wm!: WaveManager
+let tm!: TowerManager
+let envMeshes: Mesh[] = []
+
+const rig = new CameraRig(scene, canvas, { x: 0, y: 0, z: 0 })
 const heroState = new HeroState(bus)
 const heroWeapon = new HeroWeapon()
 const heroCtrl = new HeroController(scene, rig, heroWeapon)
-const wm = new WaveManager(level.path, WaveManager.demoWaves())
-const tm = new TowerManager(state, level)
 const hud = new HUD(state, heroState); hud.mount()
 
 let selectedKind: TowerKind | null = null
@@ -73,7 +59,47 @@ const buildMenu = new BuildMenu((k) => { selectedKind = k }); buildMenu.mount()
 const views = new Map<Enemy, EnemyView>()
 const towerViews = new Map<Tower, TowerView>()
 let over = false
-bus.on('gameOver', ({ victory }) => { over = true; hud.showEnd(victory) })
+
+// build the road, build-cell pads and base marker for the current level
+function buildEnvironment() {
+  for (let i = 0; i < level.path.length - 1; i++) {
+    const a = level.path[i], b = level.path[i + 1]
+    const horizontal = Math.abs(b.x - a.x) > Math.abs(b.z - a.z)
+    const len = Math.hypot(b.x - a.x, b.z - a.z) + ROAD_W // overlap corners
+    const seg = MeshBuilder.CreateBox('road', { width: horizontal ? len : ROAD_W, height: 0.1, depth: horizontal ? ROAD_W : len }, scene)
+    seg.position.set((a.x + b.x) / 2, 0.05, (a.z + b.z) / 2); seg.material = roadMat
+    envMeshes.push(seg)
+  }
+  for (const c of level.cells) {
+    const pad = MeshBuilder.CreateBox('cell', { size: 2.2 }, scene)
+    pad.position.set(c.pos.x, 0.06, c.pos.z); pad.scaling.y = 0.04; pad.material = cellMat
+    envMeshes.push(pad)
+  }
+  const baseMesh = MeshBuilder.CreateBox('base', { size: 2 }, scene)
+  baseMesh.position.set(level.base.x, 1, level.base.z); baseMesh.material = baseMat
+  envMeshes.push(baseMesh)
+}
+
+// tear down the current map and load map i (gold/lives carry over via shared GameState)
+function loadMap(i: number) {
+  for (const v of views.values()) v.dispose(); views.clear()
+  for (const v of towerViews.values()) v.dispose(); towerViews.clear()
+  for (const p of projectiles) p.mesh.dispose(); projectiles.length = 0
+  for (const m of envMeshes) m.dispose(); envMeshes = []
+  mapIndex = i
+  level = MAPS[i]
+  wm = new WaveManager(level.path, WaveManager.mapWaves(i))
+  tm = new TowerManager(state, level)
+  buildEnvironment()
+  rig.setHeroPosition({ x: level.base.x, y: 0, z: level.base.z - 3 })
+  selectedKind = null
+  nextWaveTimer = 8
+}
+
+bus.on('gameOver', ({ victory }) => {
+  if (victory && mapIndex < MAPS.length - 1) { state.nextMap(); loadMap(mapIndex + 1); return }
+  over = true; hud.showEnd(victory)
+})
 
 // projectiles: small spheres a tower fires that home onto the (moving) target
 const SHOT_COLOR: Record<TowerKind, Color3> = {
@@ -211,15 +237,19 @@ scene.onBeforeRenderObservable.add(() => {
       if (nextWaveTimer <= 0) startNextWave()
     }
   }
+  mapInfo.textContent = `Карта ${mapIndex + 1}/${MAPS.length}`
   waveInfo.textContent = (!over && state.phase === 'build' && nextWaveTimer > 0)
     ? `Волна ${state.wave + 1} через ${Math.ceil(nextWaveTimer)}с — Enter, чтобы раньше`
     : ''
   hud.update()
 })
 
-// next-wave countdown banner (top center)
+// map indicator + next-wave countdown banner (top center)
+const mapInfo = document.createElement('div')
+mapInfo.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);color:#fff;font-family:monospace;font-size:16px;text-shadow:0 0 4px #000;pointer-events:none'
+document.body.appendChild(mapInfo)
 const waveInfo = document.createElement('div')
-waveInfo.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);color:#ffd24d;font-family:monospace;font-size:16px;text-shadow:0 0 4px #000;pointer-events:none'
+waveInfo.style.cssText = 'position:fixed;top:34px;left:50%;transform:translateX(-50%);color:#ffd24d;font-family:monospace;font-size:15px;text-shadow:0 0 4px #000;pointer-events:none'
 document.body.appendChild(waveInfo)
 
 // controls + cost legend
@@ -230,6 +260,7 @@ legend.innerHTML =
   `выбери башню → клик по синей клетке<br>клик по башне = апгрейд<br>волны идут сами · Enter — начать сразу<br>Tab — герой/обзор · в герое: WASD + мышь + ЛКМ`
 document.body.appendChild(legend)
 
+loadMap(0)
 engine.runRenderLoop(() => scene.render())
 addEventListener('resize', () => engine.resize())
 buildMenu.setVisible(true)

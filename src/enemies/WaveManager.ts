@@ -43,4 +43,16 @@ export class WaveManager {
     }
     return w
   }
+
+  // exactly 2 waves per map, escalating with map index
+  static mapWaves(mapIndex: number): WaveEntry[][] {
+    const b = mapIndex * 3
+    const w1: WaveEntry[] = [{ kind: 'normal', count: 5 + b, interval: 0.8 }]
+    const w2: WaveEntry[] = [
+      { kind: 'normal', count: 6 + b, interval: 0.7 },
+      { kind: 'fast', count: 2 + mapIndex, interval: 0.5 },
+    ]
+    if (mapIndex >= 1) w2.push({ kind: 'tank', count: mapIndex, interval: 1.5 })
+    return [w1, w2]
+  }
 }

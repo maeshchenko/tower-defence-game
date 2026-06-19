@@ -32,4 +32,6 @@ export class GameState {
     if (this._wave >= this.totalWaves) { this._phase = 'gameover'; this.bus.emit('gameOver', { victory: true }) }
     else this._phase = 'build'
   }
+  // advance to the next map: reset wave count and resume building; gold and lives carry over
+  nextMap() { this._wave = 0; this._phase = 'build' }
 }
