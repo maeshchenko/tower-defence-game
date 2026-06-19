@@ -19,15 +19,16 @@ export class Environment {
 
   constructor(private scene: Scene, private fill: HemisphericLight, cfg: QualityConfig) {
     // warm directional sun (key light) — angled for short, readable shadows
-    this.sun = new DirectionalLight('sun', new Vector3(-0.5, -1, -0.45), scene)
-    this.sun.position = new Vector3(25, 45, 25)
-    this.sun.intensity = 1.05
+    // ~45° rake so casters throw a clear, object-length shadow (reads as a real sun)
+    this.sun = new DirectionalLight('sun', new Vector3(-0.45, -0.7, -0.5), scene)
+    this.sun.position = new Vector3(30, 42, 30)
+    this.sun.intensity = 1.15
     this.sun.diffuse = new Color3(1, 0.96, 0.86)
     // matte/toon: near-zero specular so surfaces don't show a blinding sun hotspot
     this.sun.specular = new Color3(0.05, 0.05, 0.05)
 
     // hemi becomes cool ambient fill so shadows aren't pure black
-    this.fill.intensity = 0.45
+    this.fill.intensity = 0.35
     this.fill.diffuse = new Color3(0.85, 0.9, 1)
     this.fill.groundColor = new Color3(0.35, 0.4, 0.3)
     this.fill.specular = new Color3(0, 0, 0)
