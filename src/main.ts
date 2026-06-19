@@ -1,3 +1,4 @@
+import '@babylonjs/loaders/glTF'
 import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix } from '@babylonjs/core'
 import { EventBus } from './core/EventBus'
 import { Vec3 } from './core/Vec3'
