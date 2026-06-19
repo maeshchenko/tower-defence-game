@@ -24,7 +24,14 @@ export class CameraRig {
     // (below) and the wheel zooms via attachControl.
     this.heroCam.keysUp = []; this.heroCam.keysDown = []; this.heroCam.keysLeft = []; this.heroCam.keysRight = []
     canvas.addEventListener('mousemove', this.onMouseLook)
+    // any click while in third-person (re)captures the cursor so free mouse-look
+    // works without holding a button, and re-grabs it after the player hit Esc
+    canvas.addEventListener('pointerdown', this.onCanvasPointerDown)
     scene.activeCamera = this.topCam
+  }
+
+  private onCanvasPointerDown = () => {
+    if (this.mode === 'hero' && document.pointerLockElement !== this.canvas) this.canvas.requestPointerLock?.()
   }
 
   // free mouse-look in third-person: moving the mouse orbits the camera around
