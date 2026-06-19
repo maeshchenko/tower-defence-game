@@ -100,9 +100,9 @@ scene.onBeforeRenderObservable.add(() => {
     for (const shot of tm.update(dt, wm.active)) {
       shot.target.takeDamage(shot.damage)
       if (shot.slow) shot.target.applySlow(shot.slow, 1.5)
-      if (!shot.target.alive && !shot.target.reachedBase) {
+      if (!shot.target.alive && !shot.target.reachedBase && views.has(shot.target)) {
         state.addGold(shot.target.bounty); bus.emit('enemyKilled', { bounty: shot.target.bounty })
-        views.get(shot.target)?.dispose(); views.delete(shot.target); wm.remove(shot.target)
+        views.get(shot.target)!.dispose(); views.delete(shot.target); wm.remove(shot.target)
       }
     }
     const hit = heroCtrl.update(dt, [...views].map(([enemy, view]) => ({ enemy, view })))
