@@ -2,6 +2,7 @@ import '@babylonjs/loaders/glTF'
 import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode } from '@babylonjs/core'
 import { AssetManager } from './rendering/AssetManager'
 import { ClipPlayer } from './rendering/ClipPlayer'
+import { Sfx } from './audio/Sfx'
 import { EventBus } from './core/EventBus'
 import { Vec3 } from './core/Vec3'
 import { GameState } from './core/GameState'
@@ -26,6 +27,7 @@ const canvas = document.getElementById('app') as HTMLCanvasElement
 const engine = new Engine(canvas, true)
 const scene = new Scene(engine)
 const assets = new AssetManager()
+const sfx = new Sfx()
 
 function showLoading(): HTMLDivElement {
   const el = document.createElement('div')
@@ -281,6 +283,7 @@ function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: Towe
   const ball = spawnModelShot(key, from.x, 1.2, from.z)
   aimProjectile(ball, { x: target.pos.x - from.x, y: 0.8 - 1.2, z: target.pos.z - from.z })
   spawnFlash(from.x, 1.4, from.z, SHOT_FX[kind], 0.45, 1.5) // muzzle flash
+  sfx.shoot()
   projectiles.push({ mesh: ball, target, ttl: 3, damage, slow })
 }
 // actual body radius per enemy kind (capsule radius), for tight hit detection
@@ -347,11 +350,12 @@ function clearHealthBars() { for (const b of healthBars.values()) b.remove(); he
 function applyHit(target: Enemy, damage: number, slow?: number) {
   if (!views.has(target)) return // already dead or leaked
   target.takeDamage(damage)
+  sfx.hit()
   floatText(target.pos.x, 1.7, target.pos.z, `-${damage} (${target.hp}/${target.maxHp})`, '#ffe27a')
   spawnFlash(target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.5), 0.5, 2) // impact spark
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
-    state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty })
+    state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty }); sfx.death()
     const v = views.get(target)!; views.delete(target); wm.remove(target); removeHealthBar(target)
     // play the death animation as a corpse, then self-remove from the list
     corpses.push(v); v.die(() => { const i = corpses.indexOf(v); if (i >= 0) corpses.splice(i, 1) })
@@ -380,7 +384,7 @@ function updateProjectiles(dt: number) {
         const hdx = heroCtrl.pos.x - pp.x, hdz = heroCtrl.pos.z - pp.z
         const r = 0.4 + PROJ_HIT
         if (hdx * hdx + hdz * hdz < r * r && Math.abs(pp.y - 0.7) < 0.8 && heroState.alive) {
-          heroState.takeDamage(p.damage ?? 0)
+          heroState.takeDamage(p.damage ?? 0); sfx.heroHurt()
           floatText(heroCtrl.pos.x, 2.0, heroCtrl.pos.z, `-${p.damage}`, '#ff6b6b')
           p.mesh.dispose(false, true); projectiles.splice(i, 1); continue
         }
@@ -407,6 +411,7 @@ function updateProjectiles(dt: number) {
 function processHeroShot(shot: HeroShot | null) {
   if (!shot) return
   heroAttackAnim()
+  sfx.shoot()
   fireHeroShot(shot.from, shot.dir, shot.damage)
 }
 
@@ -428,7 +433,7 @@ function startNextWave() {
     const bonus = Math.ceil(nextWaveTimer)
     state.addGold(bonus); flash(`+${bonus}з за ранний старт`)
   }
-  state.startWave(); wm.startWave(state.wave - 1); nextWaveTimer = -1
+  state.startWave(); wm.startWave(state.wave - 1); nextWaveTimer = -1; sfx.waveStart()
 }
 
 // input: Tab toggle, Enter start wave now
@@ -438,6 +443,8 @@ addEventListener('keydown', (e) => {
     hud.setCrosshair(rig.mode === 'hero'); buildMenu.setVisible(rig.mode === 'top')
   }
   if (e.key === 'Enter') startNextWave()
+  if (e.key === 'm' || e.key === 'M' || e.key === 'ь') sfx.muted = !sfx.muted // mute toggle
+
 })
 
 // build / upgrade on click in top mode
@@ -454,10 +461,10 @@ scene.onPointerDown = (_evt, pick) => {
   if (!selectedKind) { heroCtrl.triggerFire(); return } // no tower selected -> hero shoots toward the click
   const cell = level.cellAt(pick.pickedPoint.x, pick.pickedPoint.z, 2)
   if (!cell) return
-  if (cell.occupied) { flash('Клетка занята'); return }
+  if (cell.occupied) { flash('Клетка занята'); sfx.deny(); return }
   const t = tm.build(selectedKind, cell)
-  if (t) towerViews.set(t, new TowerView(scene, assets, t))
-  else flash('Не хватает золота')
+  if (t) { towerViews.set(t, new TowerView(scene, assets, t)); sfx.build() }
+  else { flash('Не хватает золота'); sfx.deny() }
 }
 
 scene.onBeforeRenderObservable.add(() => {
