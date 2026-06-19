@@ -427,6 +427,10 @@ function flash(msg: string) {
 
 // auto-advance waves: a countdown runs during build phase; Enter starts immediately
 let nextWaveTimer = 8 // seconds before the first wave
+// the keep defends itself: auto-fires at the nearest enemy in range (covers the
+// gap while the hero is respawning, and adds a last line of defence)
+const BASE_RANGE = 12, BASE_DMG = 8, BASE_RATE = 1 // units, damage, shots/sec
+let baseFireTimer = 0
 function startNextWave() {
   if (!started || over || state.phase !== 'build') return
   if (nextWaveTimer > 0) { // reward starting early: 1 gold per second skipped
@@ -485,6 +489,16 @@ scene.onBeforeRenderObservable.add(() => {
     for (const shot of tm.update(dt, wm.active)) {
       const firing = [...towerViews.keys()].find((t) => t.pos === shot.from)
       fireTowerShot(shot.from, shot.target, firing?.kind ?? 'cannon', shot.damage, shot.slow) // damage lands on arrival
+    }
+    // keep auto-fire: shoot the nearest enemy within range
+    baseFireTimer -= dt
+    if (baseFireTimer <= 0) {
+      let nearest: Enemy | undefined, nd = BASE_RANGE
+      for (const e of views.keys()) {
+        const d = Math.hypot(e.pos.x - level.base.x, e.pos.z - level.base.z)
+        if (d < nd) { nd = d; nearest = e }
+      }
+      if (nearest) { fireTowerShot(level.base, nearest, 'sniper', BASE_DMG); baseFireTimer = 1 / BASE_RATE }
     }
     processHeroShot(heroCtrl.update(dt))
     if (wm.cleared()) {
