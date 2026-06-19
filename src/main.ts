@@ -1,5 +1,5 @@
 import '@babylonjs/loaders/glTF'
-import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode } from '@babylonjs/core'
+import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture } from '@babylonjs/core'
 import { Environment } from './rendering/Environment'
 import { loadPreset, savePreset, nextPreset, resolveQuality, QualityPreset } from './rendering/Quality'
 import { AssetManager } from './rendering/AssetManager'
@@ -43,9 +43,44 @@ function showLoading(): HTMLDivElement {
 const light = new HemisphericLight('l', new Vector3(0, 1, 0), scene)
 light.specular = new Color3(0, 0, 0) // no shiny glare on the ground
 
+// procedural grass texture: mottled green noise drawn on a canvas, tiled across
+// the ground so it reads as a living field rather than a flat plastic plate
+function makeGrassTexture(): DynamicTexture {
+  const S = 512
+  const tex = new DynamicTexture('grass', { width: S, height: S }, scene, false)
+  const ctx = tex.getContext() as CanvasRenderingContext2D
+  ctx.fillStyle = '#3e6b30'
+  ctx.fillRect(0, 0, S, S)
+  // broad soft patches for large-scale colour variation
+  const patches = ['#456f32', '#37602a', '#4f7a38', '#335b26']
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = patches[(Math.random() * patches.length) | 0]
+    ctx.globalAlpha = 0.25
+    const r = 30 + Math.random() * 70
+    ctx.beginPath(); ctx.arc(Math.random() * S, Math.random() * S, r, 0, Math.PI * 2); ctx.fill()
+  }
+  // fine blade strokes for close-up grass detail
+  ctx.globalAlpha = 0.5
+  const blades = ['#4a7d3a', '#5b8a3c', '#356026', '#6f8f3f', '#2f5722']
+  for (let i = 0; i < 9000; i++) {
+    const x = Math.random() * S, y = Math.random() * S
+    ctx.strokeStyle = blades[(Math.random() * blades.length) | 0]
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random() * 2 - 1), y - (1 + Math.random() * 3)); ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+  tex.update()
+  tex.wrapU = Texture.WRAP_ADDRESSMODE
+  tex.wrapV = Texture.WRAP_ADDRESSMODE
+  tex.uScale = 9; tex.vScale = 9 // tile the 512px patch across the 40u field
+  return tex
+}
+
 const ground = MeshBuilder.CreateGround('ground', { width: 40, height: 40 }, scene)
-const gm = new StandardMaterial('g', scene); gm.diffuseColor = new Color3(0.2,0.45,0.2)
-ground.material = gm; ground.checkCollisions = true
+const gm = new StandardMaterial('g', scene)
+gm.diffuseTexture = makeGrassTexture()
+gm.specularColor = new Color3(0, 0, 0) // matte: no plastic glare under the sun
+ground.material = gm; ground.checkCollisions = true; ground.receiveShadows = true
 
 // perimeter walls (invisible) so hero can't leave
 for (const [x,z,w,d] of [[0,20,40,1],[0,-20,40,1],[20,0,1,40],[-20,0,1,40]] as const) {

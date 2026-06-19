@@ -23,6 +23,8 @@ export class Environment {
     this.sun.position = new Vector3(25, 45, 25)
     this.sun.intensity = 1.05
     this.sun.diffuse = new Color3(1, 0.96, 0.86)
+    // matte/toon: near-zero specular so surfaces don't show a blinding sun hotspot
+    this.sun.specular = new Color3(0.05, 0.05, 0.05)
 
     // hemi becomes cool ambient fill so shadows aren't pure black
     this.fill.intensity = 0.45
@@ -39,9 +41,9 @@ export class Environment {
     const ip = this.pipeline.imageProcessing
     ip.toneMappingEnabled = true
     ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES
-    ip.exposure = 1.1
-    ip.contrast = 1.15
-    this.pipeline.bloomThreshold = 0.75
+    ip.exposure = 1.0
+    ip.contrast = 1.08
+    this.pipeline.bloomThreshold = 0.85
     this.pipeline.bloomWeight = 0.5
     this.pipeline.bloomScale = 0.5
 
