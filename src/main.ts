@@ -130,6 +130,7 @@ const views = new Map<Enemy, EnemyView>()
 const corpses: EnemyView[] = [] // dying enemies playing their death clip before disposal
 const towerViews = new Map<Tower, TowerView>()
 let over = false
+let started = false // gates wave start until the player presses Play on the title screen
 
 // place a footprint-scaled tile model (ground/road/spawn) at x,z; y is baked by instance()
 function placeTile(key: string, x: number, z: number) {
@@ -222,7 +223,7 @@ function loadMap(i: number) {
 
 bus.on('gameOver', ({ victory }) => {
   if (victory && mapIndex < MAPS.length - 1) { state.nextMap(); loadMap(mapIndex + 1); return }
-  over = true; hud.showEnd(victory)
+  over = true; hud.showEnd(victory); showEndButtons()
 })
 // on death, send the hero back to the base to respawn there
 bus.on('heroDied', () => { heroCtrl.pos = { x: level.base.x, y: 0, z: level.base.z - 3 } })
@@ -428,7 +429,7 @@ function flash(msg: string) {
 // auto-advance waves: a countdown runs during build phase; Enter starts immediately
 let nextWaveTimer = 8 // seconds before the first wave
 function startNextWave() {
-  if (over || state.phase !== 'build') return
+  if (!started || over || state.phase !== 'build') return
   if (nextWaveTimer > 0) { // reward starting early: 1 gold per second skipped
     const bonus = Math.ceil(nextWaveTimer)
     state.addGold(bonus); flash(`+${bonus}з за ранний старт`)
@@ -494,7 +495,7 @@ scene.onBeforeRenderObservable.add(() => {
     }
   } else {
     processHeroShot(heroCtrl.update(dt))
-    if (!over && state.phase === 'build' && nextWaveTimer > 0) {
+    if (started && !over && state.phase === 'build' && nextWaveTimer > 0) {
       nextWaveTimer -= dt
       if (nextWaveTimer <= 0) startNextWave()
     }
@@ -523,6 +524,40 @@ legend.innerHTML =
   `башня выбрана → клик по клетке строит<br>клик по башне = апгрейд<br>без выбора башни: клик = выстрел героя<br>WASD — бег героя (в любом виде)<br>волны сами · Enter — сразу · Tab — сверху/сзади (3-е лицо)`
 document.body.appendChild(legend)
 
+// --- front-end menus (title screen + restart) ---
+function menuButton(label: string): HTMLButtonElement {
+  const b = document.createElement('button')
+  b.textContent = label
+  b.style.cssText = 'font-family:monospace;font-size:20px;padding:10px 30px;cursor:pointer;' +
+    'border:2px solid #ffd24d;background:#1b2330;color:#ffd24d;border-radius:6px'
+  return b
+}
+function showTitle() {
+  const ov = document.createElement('div')
+  ov.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;' +
+    'justify-content:center;gap:20px;background:rgba(16,20,28,0.93);z-index:60;font-family:monospace;color:#fff'
+  const title = document.createElement('div')
+  title.textContent = 'TOWER DEFENCE'
+  title.style.cssText = 'font-size:48px;font-weight:bold;letter-spacing:4px;color:#ffd24d;text-shadow:0 0 14px #000'
+  const sub = document.createElement('div')
+  sub.textContent = 'Защити крепость · WASD — бег · Tab — вид · клик — строить/стрелять · M — звук'
+  sub.style.cssText = 'font-size:15px;opacity:0.85;text-align:center;max-width:640px'
+  const play = menuButton('Играть')
+  play.onclick = () => { started = true; ov.remove(); sfx.waveStart() } // first gesture also unlocks audio
+  ov.append(title, sub, play)
+  document.body.appendChild(ov)
+}
+// add Restart / Next-map buttons onto the end screen
+function showEndButtons() {
+  const host = document.getElementById('endscreen')
+  if (!host || host.querySelector('button')) return
+  host.style.flexDirection = 'column'
+  const restart = menuButton('Заново')
+  restart.style.marginTop = '24px'
+  restart.onclick = () => location.reload()
+  host.appendChild(restart)
+}
+
 async function boot() {
   const overlay = showLoading()
   await assets.preload(scene)
@@ -532,5 +567,6 @@ async function boot() {
   engine.runRenderLoop(() => scene.render())
   addEventListener('resize', () => engine.resize())
   buildMenu.setVisible(true)
+  showTitle()
 }
 boot()
