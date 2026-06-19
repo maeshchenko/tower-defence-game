@@ -9,8 +9,10 @@ const STYLE = {
 
 export class EnemyView {
   readonly mesh: Mesh
+  private readonly groundY: number
   constructor(scene: Scene, private enemy: Enemy) {
     const s = STYLE[enemy.kind]
+    this.groundY = s.h / 2
     this.mesh = MeshBuilder.CreateCapsule('enemy', { height: s.h, radius: s.d/2 }, scene)
     const m = new StandardMaterial('em', scene); m.diffuseColor = s.color
     this.mesh.material = m
@@ -18,7 +20,7 @@ export class EnemyView {
   }
   sync() {
     const p = this.enemy.pos
-    this.mesh.position.set(p.x, this.mesh.getBoundingInfo().boundingBox.extendSize.y, p.z)
+    this.mesh.position.set(p.x, this.groundY, p.z)
   }
   dispose() { this.mesh.dispose() }
 }

@@ -16,6 +16,9 @@ export class TowerView {
     this.mesh.position.set(tower.pos.x, 0.75, tower.pos.z)
     this.sync()
   }
-  sync() { this.mesh.scaling.y = 1 + this.tower.level * 0.25 }
+  sync() {
+    this.mesh.scaling.y = 1 + this.tower.level * 0.25
+    this.mesh.position.y = 0.75 * this.mesh.scaling.y
+  }
   dispose() { this.mesh.dispose() }
 }
