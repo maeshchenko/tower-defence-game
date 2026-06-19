@@ -175,7 +175,7 @@ function buildProp(p: Prop) {
 function loadMap(i: number) {
   for (const v of views.values()) v.dispose(); views.clear()
   for (const v of towerViews.values()) v.dispose(); towerViews.clear()
-  for (const p of projectiles) p.mesh.dispose(); projectiles.length = 0
+  for (const p of projectiles) p.mesh.dispose(false, true); projectiles.length = 0
   for (const m of envMeshes) m.dispose(); envMeshes = []
   mapIndex = i
   level = MAPS[i]
@@ -211,7 +211,7 @@ enemyShotMat.emissiveColor = new Color3(1, 0.25, 0.2); enemyShotMat.diffuseColor
 
 // a projectile homes onto a target enemy (tower shot, damage applied on arrival),
 // flies straight and hits enemies (hero shot), or flies straight at the hero (enemy shot).
-interface Projectile { mesh: Mesh; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number }
+interface Projectile { mesh: TransformNode; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number }
 const projectiles: Projectile[] = []
 const SHOT_SPEED = 18
 const ENEMY_SHOT_SPEED = 9 // slower so the hero can dodge by moving
@@ -220,15 +220,22 @@ function spawnBall(x: number, y: number, z: number, mat: StandardMaterial, diame
   ball.material = mat; ball.isPickable = false; ball.position.set(x, y, z)
   return ball
 }
+function spawnModelShot(key: string, x: number, y: number, z: number): TransformNode {
+  const node = assets.instance(key)
+  node.position.set(x, y, z)
+  node.getChildMeshes().forEach((m) => (m.isPickable = false))
+  return node
+}
 function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: TowerKind, damage: number, slow?: number) {
-  const ball = spawnBall(from.x, 1.2, from.z, SHOT_MAT[kind], kind === 'sniper' ? 0.35 : 0.5)
+  const key = kind === 'cannon' ? 'ammo.cannon' : kind === 'sniper' ? 'ammo.sniper' : 'ammo.slow'
+  const ball = spawnModelShot(key, from.x, 1.2, from.z)
   projectiles.push({ mesh: ball, target, ttl: 3, damage, slow })
 }
 // actual body radius per enemy kind (capsule radius), for tight hit detection
 const ENEMY_RADIUS: Record<EnemyKind, number> = { normal: 0.4, fast: 0.3, tank: 0.7 }
 const PROJ_HIT = 0.15 // projectile radius added to the target's radius
 function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, damage: number) {
-  const ball = spawnBall(from.x, from.y, from.z, heroShotMat, 0.22)
+  const ball = spawnModelShot('ammo.sniper', from.x, from.y, from.z)
   projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage })
 }
 // enemy fires a straight (non-homing) shot at where the hero is now — dodge by moving
@@ -270,14 +277,14 @@ function updateProjectiles(dt: number) {
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i]
     p.ttl -= dt
-    if (p.ttl <= 0) { p.mesh.dispose(); projectiles.splice(i, 1); continue }
+    if (p.ttl <= 0) { p.mesh.dispose(false, true); projectiles.splice(i, 1); continue }
     const step = (p.speed ?? SHOT_SPEED) * dt
     if (p.target) {
       const tgt = new Vector3(p.target.pos.x, 0.8, p.target.pos.z) // follow the moving target
       const dir = tgt.subtract(p.mesh.position)
       if (dir.length() <= step) { // arrived — deal damage now
         if (p.damage != null) applyHit(p.target, p.damage, p.slow)
-        p.mesh.dispose(); projectiles.splice(i, 1); continue
+        p.mesh.dispose(false, true); projectiles.splice(i, 1); continue
       }
       p.mesh.position.addInPlace(dir.normalize().scale(step))
     } else if (p.dir) {
@@ -290,7 +297,7 @@ function updateProjectiles(dt: number) {
         if (hdx * hdx + hdz * hdz < r * r && Math.abs(pp.y - 0.7) < 0.8 && heroState.alive) {
           heroState.takeDamage(p.damage ?? 0)
           floatText(heroCtrl.pos.x, 2.0, heroCtrl.pos.z, `-${p.damage}`, '#ff6b6b')
-          p.mesh.dispose(); projectiles.splice(i, 1); continue
+          p.mesh.dispose(false, true); projectiles.splice(i, 1); continue
         }
       } else if (p.damage != null) {
         // hero ballistic shot vs enemies — hit by the enemy's actual body (radius + height)
@@ -299,14 +306,14 @@ function updateProjectiles(dt: number) {
           const r = ENEMY_RADIUS[e.kind] + PROJ_HIT
           const hdx = ep.x - pp.x, hdz = ep.z - pp.z
           if (hdx * hdx + hdz * hdz < r * r && Math.abs(pp.y - 0.8) < 0.95) {
-            applyHit(e, p.damage); p.mesh.dispose(); projectiles.splice(i, 1); break
+            applyHit(e, p.damage); p.mesh.dispose(false, true); projectiles.splice(i, 1); break
           }
         }
       }
     }
     // walls and other solid props stop projectiles (no damage)
     if (projectiles[i] === p && inObstacle(p.mesh.position.x, p.mesh.position.z)) {
-      p.mesh.dispose(); projectiles.splice(i, 1)
+      p.mesh.dispose(false, true); projectiles.splice(i, 1)
     }
   }
 }
