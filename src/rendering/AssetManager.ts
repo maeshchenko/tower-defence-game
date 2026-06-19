@@ -35,10 +35,17 @@ export class AssetManager {
       if (groups) allGroups.push(...groups)
     }
     root.metadata = { animationGroups: allGroups }
-    // measureHeight is called before root.scaling is applied, so bounding boxes are at scale 1.
-    const h = this.measureHeight(root)
-    const s = normalizeScale(h, def.targetHeight)
-    root.scaling.setAll(s)
+    if (def.footprint) {
+      // scale by XZ footprint (ground/road tiles), then drop so the top sits at tileTopY
+      const ext = this.measureXZ(root)
+      root.scaling.setAll(ext > 0 ? def.footprint / ext : 1)
+      root.computeWorldMatrix(true)
+      root.position.y = (def.tileTopY ?? 0) - this.measureMaxY(root)
+    } else {
+      // measureHeight is called before root.scaling is applied, so bounding boxes are at scale 1.
+      const h = this.measureHeight(root)
+      root.scaling.setAll(normalizeScale(h, def.targetHeight))
+    }
     if (def.yaw) root.rotation.y = def.yaw
     if (def.tint) this.applyTint(root, def.tint)
     return root
@@ -85,5 +92,26 @@ export class AssetManager {
       max = Math.max(max, b.maximumWorld.y)
     }
     return max > min ? max - min : 1
+  }
+
+  // largest of the world-space X and Z extents (for footprint-scaling tiles)
+  private measureXZ(root: TransformNode): number {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      const b = m.getBoundingInfo().boundingBox
+      minX = Math.min(minX, b.minimumWorld.x); maxX = Math.max(maxX, b.maximumWorld.x)
+      minZ = Math.min(minZ, b.minimumWorld.z); maxZ = Math.max(maxZ, b.maximumWorld.z)
+    }
+    return Math.max(maxX - minX, maxZ - minZ)
+  }
+
+  // world-space top Y of the (already-scaled) model with the root at y=0
+  private measureMaxY(root: TransformNode): number {
+    let max = -Infinity
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      m.computeWorldMatrix(true)
+      max = Math.max(max, m.getBoundingInfo().boundingBox.maximumWorld.y)
+    }
+    return max === -Infinity ? 0 : max
   }
 }

@@ -3,10 +3,15 @@ export interface ModelDef {
   targetHeight: number // desired height in game units after normalize
   yaw?: number         // extra Y rotation (radians) if model faces the wrong way
   parts?: string[]     // extra GLB urls stacked onto url (towers), bottom→top
-  // Flat override colour [r,g,b] (0..1). Kenney's tower/base GLBs (UnityGLTF export)
+  // Flat override colour [r,g,b] (0..1). Kenney's tower/base/tile GLBs (UnityGLTF export)
   // mis-sample the shared colormap atlas under Babylon's loader and render purple,
   // so we paint them a solid colour instead. Proper textured towers come in M4.
   tint?: [number, number, number]
+  // Scale so the model's XZ footprint equals this (overrides height normalize).
+  // Used for ground/road tiles laid on a grid. `tileTopY` is the world Y the
+  // tile's top surface should sit at after scaling.
+  footprint?: number
+  tileTopY?: number
 }
 
 // scale factor to bring a model of measured height `rawHeight` to `targetHeight`
@@ -20,6 +25,7 @@ const A = '/models/ammo/'
 const P = '/models/props/'
 const E = '/models/enemies/'
 const H = '/models/hero/'
+const TL = '/models/tiles/'
 
 export const MODELS: Record<string, ModelDef> = {
   // tints mirror the range-ring colours (TowerView COLOR) so kinds read at a glance
@@ -47,4 +53,10 @@ export const MODELS: Record<string, ModelDef> = {
 
   'base.keep':  { url: T + 'tower-round-base.glb', targetHeight: 3.0,
     parts: [T + 'tower-round-middle-a.glb', T + 'tower-round-roof-a.glb'], tint: [0.62, 0.6, 0.56] },
+
+  // ground/road tiles — beveled Kenney blocks laid on a grid (footprint-scaled,
+  // top surface at y=0), flat-tinted to dodge the colormap-atlas mis-sample.
+  'tile.ground': { url: TL + 'tile.glb', targetHeight: 1, footprint: 4.2, tileTopY: 0, tint: [0.28, 0.5, 0.26] },
+  'tile.road':   { url: TL + 'tile.glb', targetHeight: 1, footprint: 2.4, tileTopY: 0.06, tint: [0.4, 0.32, 0.24] },
+  'tile.spawn':  { url: TL + 'tile.glb', targetHeight: 1, footprint: 2.4, tileTopY: 0.07, tint: [0.7, 0.3, 0.2] },
 }

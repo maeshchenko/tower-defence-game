@@ -54,9 +54,7 @@ const MAPS = Level.maps()
 const state = new GameState(bus, { totalWaves: 10 }) // 10 waves per map
 
 // shared environment materials
-const roadMat = new StandardMaterial('roadmat', scene); roadMat.diffuseColor = new Color3(0.35, 0.3, 0.25)
 const cellMat = new StandardMaterial('cellmat', scene); cellMat.diffuseColor = new Color3(0.3, 0.55, 0.8); cellMat.alpha = 0.85
-const ROAD_W = 2.2
 // decor materials (shared)
 const mat = (name: string, r: number, g: number, b: number) => { const m = new StandardMaterial(name, scene); m.diffuseColor = new Color3(r, g, b); m.specularColor = new Color3(0, 0, 0); return m }
 const bushMat = mat('bush', 0.22, 0.5, 0.22)
@@ -131,16 +129,34 @@ const corpses: EnemyView[] = [] // dying enemies playing their death clip before
 const towerViews = new Map<Tower, TowerView>()
 let over = false
 
-// build the road, build-cell pads and base marker for the current level
+// place a footprint-scaled tile model (ground/road/spawn) at x,z; y is baked by instance()
+function placeTile(key: string, x: number, z: number) {
+  const t = assets.instance(key)
+  t.position.x = x; t.position.z = z
+  t.getChildMeshes().forEach((m) => (m.isPickable = false))
+  envProps.push(t)
+}
+
+// build the tiled ground, road, build-cell pads and base for the current level
 function buildEnvironment() {
+  // grass ground: a grid of beveled Kenney tiles over the play field (the flat
+  // 'ground' plane stays underneath as the aim-pick / collision surface)
+  const STEP = 5.5
+  for (let gx = -16.5; gx <= 16.5; gx += STEP)
+    for (let gz = -16.5; gz <= 16.5; gz += STEP) placeTile('tile.ground', gx, gz)
+
+  // road: dirt tiles stepped along each axis-aligned path segment
   for (let i = 0; i < level.path.length - 1; i++) {
     const a = level.path[i], b = level.path[i + 1]
-    const horizontal = Math.abs(b.x - a.x) > Math.abs(b.z - a.z)
-    const len = Math.hypot(b.x - a.x, b.z - a.z) + ROAD_W // overlap corners
-    const seg = MeshBuilder.CreateBox('road', { width: horizontal ? len : ROAD_W, height: 0.1, depth: horizontal ? ROAD_W : len }, scene)
-    seg.position.set((a.x + b.x) / 2, 0.05, (a.z + b.z) / 2); seg.material = roadMat
-    envMeshes.push(seg)
+    const len = Math.hypot(b.x - a.x, b.z - a.z)
+    const n = Math.max(1, Math.round(len / 2.0))
+    for (let k = 0; k <= n; k++) {
+      const x = a.x + (b.x - a.x) * (k / n), z = a.z + (b.z - a.z) * (k / n)
+      placeTile('tile.road', x, z)
+    }
   }
+  placeTile('tile.spawn', level.spawn.x, level.spawn.z) // mark the entry tile
+
   for (const c of level.cells) {
     const pad = MeshBuilder.CreateBox('cell', { size: 2.2 }, scene)
     pad.position.set(c.pos.x, 0.06, c.pos.z); pad.scaling.y = 0.04; pad.material = cellMat

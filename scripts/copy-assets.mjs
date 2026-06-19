@@ -18,6 +18,7 @@ const KENNEY_MODELS = {
   ammo: ['weapon-ammo-cannonball', 'weapon-ammo-arrow', 'weapon-ammo-bullet'],
   props: ['detail-tree', 'detail-tree-large', 'detail-rocks', 'detail-rocks-large',
           'wood-structure', 'wood-structure-high', 'wood-structure-part'],
+  tiles: ['tile', 'tile-straight', 'tile-corner-square', 'tile-spawn', 'tile-end'],
 }
 const KAYKIT = {
   hero: [[ADV, 'Knight.glb']],
