@@ -2,7 +2,7 @@ import { Vec3, dist } from '../core/Vec3'
 import { Enemy } from '../enemies/Enemy'
 import { TowerKind, TowerLevel, TOWER_DEFS } from './TowerTypes'
 
-export interface ShotResult { target: Enemy; damage: number; slow?: number }
+export interface ShotResult { target: Enemy; damage: number; slow?: number; from: Vec3 }
 
 export class Tower {
   private lvl = 0
@@ -24,6 +24,6 @@ export class Tower {
     const target = enemies.find((e) => e.alive && dist(e.pos, this.pos) <= s.range)
     if (!target) return null
     this.cooldown = 1 / s.fireRate
-    return { target, damage: s.damage, slow: s.slow }
+    return { target, damage: s.damage, slow: s.slow, from: this.pos }
   }
 }

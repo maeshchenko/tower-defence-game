@@ -3,6 +3,9 @@ import { Vec3 } from '../core/Vec3'
 
 export type ViewMode = 'top' | 'hero'
 
+// hero eye height above ground (quarter-size hero)
+const HERO_EYE = 0.425
+
 export class CameraRig {
   mode: ViewMode = 'top'
   readonly topCam: ArcRotateCamera
@@ -10,11 +13,11 @@ export class CameraRig {
   constructor(private scene: Scene, private canvas: HTMLCanvasElement, heroStart: Vec3) {
     this.topCam = new ArcRotateCamera('top', -Math.PI/2, 0.6, 45, Vector3.Zero(), scene)
     this.topCam.attachControl(canvas, true)
-    this.heroCam = new UniversalCamera('hero', new Vector3(heroStart.x, 1.7, heroStart.z), scene)
+    this.heroCam = new UniversalCamera('hero', new Vector3(heroStart.x, HERO_EYE, heroStart.z), scene)
     this.heroCam.checkCollisions = true
     this.heroCam.applyGravity = false
-    this.heroCam.ellipsoid = new Vector3(0.5, 0.85, 0.5)
-    this.heroCam.minZ = 0.1
+    this.heroCam.ellipsoid = new Vector3(0.125, 0.2125, 0.125)
+    this.heroCam.minZ = 0.05
     scene.activeCamera = this.topCam
   }
   toggle() {
@@ -32,6 +35,6 @@ export class CameraRig {
       this.topCam.attachControl(this.canvas, true)
     }
   }
-  setHeroPosition(p: Vec3) { this.heroCam.position.set(p.x, 1.7, p.z) }
+  setHeroPosition(p: Vec3) { this.heroCam.position.set(p.x, HERO_EYE, p.z) }
   get heroPosition(): Vec3 { const v = this.heroCam.position; return { x: v.x, y: v.y, z: v.z } }
 }

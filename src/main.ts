@@ -1,4 +1,4 @@
-import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial } from '@babylonjs/core'
+import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh } from '@babylonjs/core'
 import { EventBus } from './core/EventBus'
 import { GameState } from './core/GameState'
 import { Level } from './world/Level'
@@ -12,7 +12,7 @@ import { Enemy } from './enemies/Enemy'
 import { TowerManager } from './towers/TowerManager'
 import { TowerView } from './towers/TowerView'
 import { Tower } from './towers/Tower'
-import { TowerKind } from './towers/TowerTypes'
+import { TowerKind, TOWER_DEFS } from './towers/TowerTypes'
 import { HUD } from './ui/HUD'
 import { BuildMenu } from './ui/BuildMenu'
 
@@ -35,11 +35,16 @@ const bus = new EventBus()
 const state = new GameState(bus)
 const level = Level.demo()
 
-// draw path as a strip of dark boxes (visual aid)
-for (const p of level.path) {
-  const m = MeshBuilder.CreateBox('node', { size: 1.5 }, scene)
-  m.position.set(p.x, 0.05, p.z); m.scaling.y = 0.05
-  const mat = new StandardMaterial('pm', scene); mat.diffuseColor = new Color3(0.35,0.3,0.25); m.material = mat
+// draw a continuous road by connecting consecutive waypoints with segments
+const roadMat = new StandardMaterial('roadmat', scene); roadMat.diffuseColor = new Color3(0.35, 0.3, 0.25)
+const ROAD_W = 2.2
+for (let i = 0; i < level.path.length - 1; i++) {
+  const a = level.path[i], b = level.path[i + 1]
+  const horizontal = Math.abs(b.x - a.x) > Math.abs(b.z - a.z)
+  const len = Math.hypot(b.x - a.x, b.z - a.z) + ROAD_W // overlap corners
+  const seg = MeshBuilder.CreateBox('road', { width: horizontal ? len : ROAD_W, height: 0.1, depth: horizontal ? ROAD_W : len }, scene)
+  seg.position.set((a.x + b.x) / 2, 0.05, (a.z + b.z) / 2)
+  seg.material = roadMat
 }
 // draw build cells as visible pads (where towers can be placed)
 for (const c of level.cells) {
@@ -70,6 +75,45 @@ const towerViews = new Map<Tower, TowerView>()
 let over = false
 bus.on('gameOver', ({ victory }) => { over = true; hud.showEnd(victory) })
 
+// projectiles: small spheres a tower fires that home onto the (moving) target
+const SHOT_COLOR: Record<TowerKind, Color3> = {
+  cannon: new Color3(1, 0.8, 0.2), slow: new Color3(0.4, 0.7, 1), sniper: new Color3(1, 0.3, 0.3),
+}
+const SHOT_MAT: Record<TowerKind, StandardMaterial> = {} as Record<TowerKind, StandardMaterial>
+for (const k of ['cannon', 'slow', 'sniper'] as TowerKind[]) {
+  const m = new StandardMaterial('shot_' + k, scene); m.emissiveColor = SHOT_COLOR[k]; m.diffuseColor = SHOT_COLOR[k]
+  SHOT_MAT[k] = m
+}
+interface Projectile { mesh: Mesh; target: Enemy }
+const projectiles: Projectile[] = []
+const SHOT_SPEED = 18
+function fireProjectile(from: { x: number; z: number }, target: Enemy, kind: TowerKind) {
+  const ball = MeshBuilder.CreateSphere('proj', { diameter: kind === 'sniper' ? 0.35 : 0.5, segments: 6 }, scene)
+  ball.material = SHOT_MAT[kind]; ball.isPickable = false
+  ball.position.set(from.x, 1.2, from.z)
+  projectiles.push({ mesh: ball, target })
+}
+function updateProjectiles(dt: number) {
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i]
+    const tgt = new Vector3(p.target.pos.x, 0.8, p.target.pos.z) // follow the moving target
+    const dir = tgt.subtract(p.mesh.position)
+    const step = SHOT_SPEED * dt
+    if (dir.length() <= step) { p.mesh.dispose(); projectiles.splice(i, 1); continue }
+    p.mesh.position.addInPlace(dir.normalize().scale(step))
+  }
+}
+
+// transient toast message (e.g. "Not enough gold")
+const toast = document.createElement('div')
+toast.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);color:#ffd24d;font-family:monospace;font-size:18px;text-shadow:0 0 4px #000;pointer-events:none;opacity:0;transition:opacity .2s'
+document.body.appendChild(toast)
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+function flash(msg: string) {
+  toast.textContent = msg; toast.style.opacity = '1'
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.style.opacity = '0' }, 1200)
+}
+
 // input: Tab toggle, Enter start wave
 addEventListener('keydown', (e) => {
   if (e.key === 'Tab') {
@@ -91,13 +135,16 @@ scene.onPointerDown = (_evt, pick) => {
   if (!selectedKind) return
   const cell = level.cellAt(pick.pickedPoint.x, pick.pickedPoint.z, 2)
   if (!cell) return
+  if (cell.occupied) { flash('Клетка занята'); return }
   const t = tm.build(selectedKind, cell)
   if (t) towerViews.set(t, new TowerView(scene, t))
+  else flash('Не хватает золота')
 }
 
 scene.onBeforeRenderObservable.add(() => {
   const dt = engine.getDeltaTime() / 1000
   heroState.tick(dt)
+  updateProjectiles(dt)
   if (!over && state.phase === 'wave') {
     for (const e of wm.update(dt)) views.set(e, new EnemyView(scene, e))
     for (const e of [...wm.active]) {
@@ -106,6 +153,8 @@ scene.onBeforeRenderObservable.add(() => {
       views.get(e)?.sync()
     }
     for (const shot of tm.update(dt, wm.active)) {
+      const firing = [...towerViews.keys()].find((t) => t.pos === shot.from)
+      fireProjectile(shot.from, shot.target, firing?.kind ?? 'cannon')
       shot.target.takeDamage(shot.damage)
       if (shot.slow) shot.target.applySlow(shot.slow, 1.5)
       if (!shot.target.alive && !shot.target.reachedBase && views.has(shot.target)) {
@@ -127,6 +176,14 @@ scene.onBeforeRenderObservable.add(() => {
   }
   hud.update()
 })
+
+// controls + cost legend
+const legend = document.createElement('div')
+legend.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font-family:monospace;font-size:13px;line-height:1.5;text-align:right;text-shadow:0 0 3px #000;pointer-events:none'
+legend.innerHTML =
+  `cannon ${TOWER_DEFS.cannon[0].cost}g · slow ${TOWER_DEFS.slow[0].cost}g · sniper ${TOWER_DEFS.sniper[0].cost}g<br>` +
+  `выбери башню → клик по синей клетке<br>клик по башне = апгрейд<br>Enter — старт волны · Tab — герой/обзор<br>в герое: WASD + мышь + ЛКМ`
+document.body.appendChild(legend)
 
 engine.runRenderLoop(() => scene.render())
 addEventListener('resize', () => engine.resize())

@@ -4,7 +4,7 @@ import { HeroWeapon } from './HeroWeapon'
 import { Enemy } from '../enemies/Enemy'
 import { EnemyView } from '../enemies/EnemyView'
 
-const SPEED = 6
+const SPEED = 1.5
 
 export class HeroController {
   private keys = new Set<string>()
