@@ -84,8 +84,9 @@ const heroCtrl = new HeroController(scene, rig, heroWeapon)
 const hud = new HUD(state, heroState); hud.mount()
 
 // KayKit Knight model — created after assets are preloaded in boot()
-// KayKit characters' visual front is local -Z, so add π to match the controller yaw
-const HERO_FACING_OFFSET = Math.PI
+// The Knight's visual front is local +Z and heroCtrl.yaw = atan2(aim.x, aim.z)
+// already points +Z at the cursor, so no extra offset is needed to face the aim.
+const HERO_FACING_OFFSET = 0
 let heroBody!: TransformNode
 
 function makeHero() {
@@ -212,9 +213,17 @@ function spawnModelShot(key: string, x: number, y: number, z: number): Transform
   node.getChildMeshes().forEach((m) => (m.isPickable = false))
   return node
 }
+// Point a projectile model's nose (local +Z, e.g. the arrow shaft) along its velocity.
+const TMP_AIM = new Vector3()
+function aimProjectile(node: TransformNode, dir: { x: number; y: number; z: number }) {
+  TMP_AIM.set(dir.x, dir.y, dir.z)
+  if (TMP_AIM.lengthSquared() < 1e-8) return
+  node.lookAt(node.position.add(TMP_AIM)) // lookAt aligns local +Z to the target
+}
 function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: TowerKind, damage: number, slow?: number) {
   const key = kind === 'cannon' ? 'ammo.cannon' : kind === 'sniper' ? 'ammo.sniper' : 'ammo.slow'
   const ball = spawnModelShot(key, from.x, 1.2, from.z)
+  aimProjectile(ball, { x: target.pos.x - from.x, y: 0.8 - 1.2, z: target.pos.z - from.z })
   projectiles.push({ mesh: ball, target, ttl: 3, damage, slow })
 }
 // actual body radius per enemy kind (capsule radius), for tight hit detection
@@ -222,6 +231,7 @@ const ENEMY_RADIUS: Record<EnemyKind, number> = { normal: 0.4, fast: 0.3, tank: 
 const PROJ_HIT = 0.15 // projectile radius added to the target's radius
 function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, damage: number) {
   const ball = spawnModelShot('ammo.sniper', from.x, from.y, from.z)
+  aimProjectile(ball, dir)
   projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage })
 }
 // enemy fires a straight (non-homing) shot at where the hero is now — dodge by moving
@@ -268,6 +278,7 @@ function updateProjectiles(dt: number) {
     if (p.target) {
       const tgt = new Vector3(p.target.pos.x, 0.8, p.target.pos.z) // follow the moving target
       const dir = tgt.subtract(p.mesh.position)
+      aimProjectile(p.mesh, dir) // keep the model's nose on the (moving) target
       if (dir.length() <= step) { // arrived — deal damage now
         if (p.damage != null) applyHit(p.target, p.damage, p.slow)
         p.mesh.dispose(false, true); projectiles.splice(i, 1); continue
