@@ -190,17 +190,8 @@ bus.on('gameOver', ({ victory }) => {
 // on death, send the hero back to the base to respawn there
 bus.on('heroDied', () => { heroCtrl.pos = { x: level.base.x, y: 0, z: level.base.z - 3 } })
 
-// projectiles: small spheres a tower fires that home onto the (moving) target
-const SHOT_COLOR: Record<TowerKind, Color3> = {
-  cannon: new Color3(1, 0.8, 0.2), slow: new Color3(0.4, 0.7, 1), sniper: new Color3(1, 0.3, 0.3),
-}
-const SHOT_MAT: Record<TowerKind, StandardMaterial> = {} as Record<TowerKind, StandardMaterial>
-for (const k of ['cannon', 'slow', 'sniper'] as TowerKind[]) {
-  const m = new StandardMaterial('shot_' + k, scene); m.emissiveColor = SHOT_COLOR[k]; m.diffuseColor = SHOT_COLOR[k]
-  SHOT_MAT[k] = m
-}
-const heroShotMat = new StandardMaterial('shot_hero', scene)
-heroShotMat.emissiveColor = new Color3(0.6, 1, 0.5); heroShotMat.diffuseColor = new Color3(0.6, 1, 0.5)
+// projectiles: tower and hero shots are GLB models (see fireTowerShot / fireHeroShot);
+// only enemy shots are still plain spheres.
 const enemyShotMat = new StandardMaterial('shot_enemy', scene)
 enemyShotMat.emissiveColor = new Color3(1, 0.25, 0.2); enemyShotMat.diffuseColor = new Color3(1, 0.25, 0.2)
 

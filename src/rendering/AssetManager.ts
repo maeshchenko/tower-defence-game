@@ -68,7 +68,9 @@ export class AssetManager {
   private cloneInto(url: string): TransformNode {
     const c = this.containers.get(url)
     if (!c) throw new Error('not preloaded: ' + url)
-    const entries = c.instantiateModelsToScene(undefined, false, { doNotInstantiate: true })
+    // cloneMaterials=true: each instance owns its materials so dispose(false,true)
+    // on one instance doesn't free shared materials/textures out from under live siblings.
+    const entries = c.instantiateModelsToScene(undefined, true, { doNotInstantiate: true })
     const node = entries.rootNodes[0] as TransformNode
     // stash animation groups so playIdle can find them on the returned root
     node.metadata = { ...(node.metadata ?? {}), animationGroups: entries.animationGroups }
