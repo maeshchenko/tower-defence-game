@@ -1,7 +1,11 @@
 import '@babylonjs/loaders/glTF'
-import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture } from '@babylonjs/core'
+import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture, TrailMesh } from '@babylonjs/core'
 import { Environment } from './rendering/Environment'
 import { loadPreset, savePreset, nextPreset, resolveQuality, QualityPreset } from './rendering/Quality'
+import { Screenshake } from './fx/Screenshake'
+import { Hitstop } from './fx/Hitstop'
+import { burst } from './fx/Particles'
+import { attachTrail } from './fx/Trail'
 import { AssetManager } from './rendering/AssetManager'
 import { ClipPlayer } from './rendering/ClipPlayer'
 import { Sfx } from './audio/Sfx'
@@ -280,8 +284,7 @@ function loadMap(i: number) {
   for (const c of corpses) { env.removeShadowCaster(c.mesh); c.dispose() } corpses.length = 0
   clearHealthBars()
   for (const v of towerViews.values()) { env.removeShadowCaster(v.mesh); v.dispose() } towerViews.clear()
-  for (const p of projectiles) p.mesh.dispose(false, true); projectiles.length = 0
-  for (const f of flashes) { f.mesh.dispose(); f.mat.dispose() } flashes.length = 0
+  for (const p of projectiles) killProjectile(p); projectiles.length = 0
   for (const m of envMeshes) m.dispose(); envMeshes = []
   for (const n of envProps) { env.removeShadowCaster(n); n.dispose(false, true) } envProps = []
   mapIndex = i
@@ -307,32 +310,22 @@ bus.on('heroDied', () => { heroCtrl.pos = { x: level.base.x, y: 0, z: level.base
 const enemyShotMat = new StandardMaterial('shot_enemy', scene)
 enemyShotMat.emissiveColor = new Color3(1, 0.25, 0.2); enemyShotMat.diffuseColor = new Color3(1, 0.25, 0.2)
 
-// transient "flash" FX (muzzle / impact): a glowing sphere that expands and fades
-interface Flash { mesh: Mesh; mat: StandardMaterial; age: number; ttl: number; grow: number }
-const flashes: Flash[] = []
-function spawnFlash(x: number, y: number, z: number, color: Color3, size = 0.5, grow = 2.5) {
-  const m = MeshBuilder.CreateSphere('fx', { diameter: size, segments: 6 }, scene)
-  const mat = new StandardMaterial('fxm', scene)
-  mat.emissiveColor = color; mat.diffuseColor = color; mat.disableLighting = true
-  mat.alpha = 0.85; m.material = mat; m.isPickable = false; m.position.set(x, y, z)
-  flashes.push({ mesh: m, mat, age: 0, ttl: 0.22, grow })
-}
-function updateFlashes(dt: number) {
-  for (let i = flashes.length - 1; i >= 0; i--) {
-    const f = flashes[i]; f.age += dt
-    const t = f.age / f.ttl
-    if (t >= 1) { f.mesh.dispose(); f.mat.dispose(); flashes.splice(i, 1); continue }
-    f.mesh.scaling.setAll(1 + t * f.grow); f.mat.alpha = 0.85 * (1 - t)
-  }
-}
 const SHOT_FX: Record<TowerKind, Color3> = {
   cannon: new Color3(1, 0.8, 0.3), slow: new Color3(0.5, 0.8, 1), sniper: new Color3(1, 0.5, 0.4),
 }
+const HERO_SHOT_COLOR = new Color3(0.6, 0.95, 1)
+const ENEMY_SHOT_COLOR = new Color3(1, 0.3, 0.25)
+
+// juice controllers: trauma-based screenshake + hitstop on big events
+const shake = new Screenshake()
+const hitstop = new Hitstop()
+const SHAKE_AMP = 0.55 // peak camera targetScreenOffset; scaled down in third-person
 
 // a projectile homes onto a target enemy (tower shot, damage applied on arrival),
 // flies straight and hits enemies (hero shot), or flies straight at the hero (enemy shot).
-interface Projectile { mesh: TransformNode; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number }
+interface Projectile { mesh: TransformNode; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number; trail?: TrailMesh }
 const projectiles: Projectile[] = []
+function killProjectile(p: Projectile) { p.trail?.dispose(); p.mesh.dispose(false, true) }
 const SHOT_SPEED = 18
 const ENEMY_SHOT_SPEED = 9 // slower so the hero can dodge by moving
 function spawnBall(x: number, y: number, z: number, mat: StandardMaterial, diameter: number): Mesh {
@@ -357,9 +350,10 @@ function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: Towe
   const key = kind === 'cannon' ? 'ammo.cannon' : kind === 'sniper' ? 'ammo.sniper' : 'ammo.slow'
   const ball = spawnModelShot(key, from.x, 1.2, from.z)
   aimProjectile(ball, { x: target.pos.x - from.x, y: 0.8 - 1.2, z: target.pos.z - from.z })
-  spawnFlash(from.x, 1.4, from.z, SHOT_FX[kind], 0.45, 1.5) // muzzle flash
+  burst(scene, 'muzzle', from.x, 1.4, from.z, SHOT_FX[kind]) // muzzle puff
+  const trail = attachTrail(scene, ball, SHOT_FX[kind])
   sfx.shoot()
-  projectiles.push({ mesh: ball, target, ttl: 3, damage, slow })
+  projectiles.push({ mesh: ball, target, ttl: 3, damage, slow, trail })
 }
 // actual body radius per enemy kind (capsule radius), for tight hit detection
 const ENEMY_RADIUS: Record<EnemyKind, number> = { normal: 0.4, fast: 0.3, tank: 0.7 }
@@ -367,13 +361,15 @@ const PROJ_HIT = 0.15 // projectile radius added to the target's radius
 function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, damage: number) {
   const ball = spawnModelShot('ammo.sniper', from.x, from.y, from.z)
   aimProjectile(ball, dir)
-  projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage })
+  const trail = attachTrail(scene, ball, HERO_SHOT_COLOR)
+  projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage, trail })
 }
 // enemy fires a straight (non-homing) shot at where the hero is now — dodge by moving
 function fireEnemyShot(from: { x: number; z: number }, heroPos: Vec3, damage: number) {
   const ball = spawnBall(from.x, 0.8, from.z, enemyShotMat, 0.3)
   const d = new Vector3(heroPos.x - from.x, 1.0 - 0.8, heroPos.z - from.z).normalize()
-  projectiles.push({ mesh: ball, dir: d, ttl: 2.5, damage, vsHero: true, speed: ENEMY_SHOT_SPEED })
+  const trail = attachTrail(scene, ball, ENEMY_SHOT_COLOR)
+  projectiles.push({ mesh: ball, dir: d, ttl: 2.5, damage, vsHero: true, speed: ENEMY_SHOT_SPEED, trail })
 }
 
 // RPG-style floating damage number at a world position
@@ -426,12 +422,19 @@ function applyHit(target: Enemy, damage: number, slow?: number) {
   target.takeDamage(damage)
   sfx.hit()
   floatText(target.pos.x, 1.7, target.pos.z, `-${damage} (${target.hp}/${target.maxHp})`, '#ffe27a')
-  spawnFlash(target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.5), 0.5, 2) // impact spark
+  burst(scene, 'impact', target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.55)) // impact spark
+  views.get(target)?.flashHit() // white blink on the body
+  shake.addTrauma(0.08)
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
     state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty }); sfx.death()
     const v = views.get(target)!; views.delete(target); wm.remove(target); removeHealthBar(target)
     env.removeShadowCaster(v.mesh) // stop casting as it dies (mesh disposes after the death clip)
+    // death FX: burst + trauma (heavier for a tank); hitstop only on a tank for weight
+    const tank = target.kind === 'tank'
+    burst(scene, 'death', target.pos.x, 1.0, target.pos.z, new Color3(1, 0.55, 0.3))
+    shake.addTrauma(tank ? 0.4 : 0.15)
+    if (tank) hitstop.trigger(70)
     // play the death animation as a corpse, then self-remove from the list
     corpses.push(v); v.die(() => { const i = corpses.indexOf(v); if (i >= 0) corpses.splice(i, 1) })
   }
@@ -440,7 +443,7 @@ function updateProjectiles(dt: number) {
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i]
     p.ttl -= dt
-    if (p.ttl <= 0) { p.mesh.dispose(false, true); projectiles.splice(i, 1); continue }
+    if (p.ttl <= 0) { killProjectile(p); projectiles.splice(i, 1); continue }
     const step = (p.speed ?? SHOT_SPEED) * dt
     if (p.target) {
       const tgt = new Vector3(p.target.pos.x, 0.8, p.target.pos.z) // follow the moving target
@@ -448,7 +451,7 @@ function updateProjectiles(dt: number) {
       aimProjectile(p.mesh, dir) // keep the model's nose on the (moving) target
       if (dir.length() <= step) { // arrived — deal damage now
         if (p.damage != null) applyHit(p.target, p.damage, p.slow)
-        p.mesh.dispose(false, true); projectiles.splice(i, 1); continue
+        killProjectile(p); projectiles.splice(i, 1); continue
       }
       p.mesh.position.addInPlace(dir.normalize().scale(step))
     } else if (p.dir) {
@@ -461,7 +464,7 @@ function updateProjectiles(dt: number) {
         if (hdx * hdx + hdz * hdz < r * r && Math.abs(pp.y - 0.7) < 0.8 && heroState.alive) {
           heroState.takeDamage(p.damage ?? 0); sfx.heroHurt()
           floatText(heroCtrl.pos.x, 2.0, heroCtrl.pos.z, `-${p.damage}`, '#ff6b6b')
-          p.mesh.dispose(false, true); projectiles.splice(i, 1); continue
+          killProjectile(p); projectiles.splice(i, 1); continue
         }
       } else if (p.damage != null) {
         // hero ballistic shot vs enemies — hit by the enemy's actual body (radius + height)
@@ -470,14 +473,14 @@ function updateProjectiles(dt: number) {
           const r = ENEMY_RADIUS[e.kind] + PROJ_HIT
           const hdx = ep.x - pp.x, hdz = ep.z - pp.z
           if (hdx * hdx + hdz * hdz < r * r && Math.abs(pp.y - 0.8) < 0.95) {
-            applyHit(e, p.damage); p.mesh.dispose(false, true); projectiles.splice(i, 1); break
+            applyHit(e, p.damage); killProjectile(p); projectiles.splice(i, 1); break
           }
         }
       }
     }
     // walls and other solid props stop projectiles (no damage)
     if (projectiles[i] === p && inObstacle(p.mesh.position.x, p.mesh.position.z)) {
-      p.mesh.dispose(false, true); projectiles.splice(i, 1)
+      killProjectile(p); projectiles.splice(i, 1)
     }
   }
 }
@@ -487,6 +490,8 @@ function processHeroShot(shot: HeroShot | null) {
   if (!shot) return
   heroAttackAnim()
   sfx.shoot()
+  burst(scene, 'muzzle', shot.from.x, shot.from.y, shot.from.z, HERO_SHOT_COLOR)
+  shake.addTrauma(0.15) // recoil kick
   fireHeroShot(shot.from, shot.dir, shot.damage)
 }
 
@@ -553,15 +558,17 @@ scene.onPointerDown = (_evt, pick) => {
 }
 
 scene.onBeforeRenderObservable.add(() => {
-  const dt = engine.getDeltaTime() / 1000
+  // real time drives FX (shake/particles); sim dt is frozen to 0 during a hitstop
+  const realDt = engine.getDeltaTime() / 1000
+  const simScale = hitstop.update(realDt * 1000)
+  const dt = realDt * simScale
   heroState.tick(dt)
   updateProjectiles(dt)
-  updateFlashes(dt)
   if (!over && state.phase === 'wave') {
     for (const e of wm.update(dt)) { const v = new EnemyView(scene, assets, e); env.addShadowCaster(v.mesh); views.set(e, v) }
     for (const e of [...wm.active]) {
       e.update(dt)
-      if (e.reachedBase) { state.damageBase(1); removeHealthBar(e); const rv = views.get(e); if (rv) { env.removeShadowCaster(rv.mesh); rv.dispose() } views.delete(e); wm.remove(e); continue }
+      if (e.reachedBase) { state.damageBase(1); shake.addTrauma(0.5); hitstop.trigger(80); removeHealthBar(e); const rv = views.get(e); if (rv) { env.removeShadowCaster(rv.mesh); rv.dispose() } views.delete(e); wm.remove(e); continue }
       views.get(e)?.sync()
       updateHealthBar(e)
       const atk = e.attack(dt, heroCtrl.pos) // returns damage when in range + off cooldown
@@ -570,6 +577,7 @@ scene.onBeforeRenderObservable.add(() => {
     for (const shot of tm.update(dt, wm.active)) {
       const firing = [...towerViews.keys()].find((t) => t.pos === shot.from)
       fireTowerShot(shot.from, shot.target, firing?.kind ?? 'cannon', shot.damage, shot.slow) // damage lands on arrival
+      if (firing) towerViews.get(firing)?.kickback() // recoil pulse
     }
     // keep auto-fire: shoot the nearest enemy within range
     baseFireTimer -= dt
@@ -595,6 +603,10 @@ scene.onBeforeRenderObservable.add(() => {
     }
   }
   syncHero()
+  // apply screenshake to the active camera (third-person shakes softer to avoid nausea)
+  const off = shake.step(realDt, rig.mode === 'hero' ? SHAKE_AMP * 0.4 : SHAKE_AMP)
+  const activeCam = scene.activeCamera as { targetScreenOffset?: { set(x: number, y: number): void } } | null
+  activeCam?.targetScreenOffset?.set(off.x, off.y)
   mapInfo.textContent = `Карта ${mapIndex + 1}/${MAPS.length}`
   waveInfo.textContent = (!over && state.phase === 'build' && nextWaveTimer > 0)
     ? `Волна ${state.wave + 1} через ${Math.ceil(nextWaveTimer)}с — Enter, чтобы раньше`
