@@ -182,6 +182,34 @@ function placeTile(key: string, x: number, z: number) {
   envProps.push(t)
 }
 
+// a little hut at the entry so enemies emerge from a doorway instead of thin air.
+// offset back along the path so the doorway opening lands on the spawn point.
+function buildSpawnHut() {
+  const s = level.spawn
+  const next = level.path[1] ?? { x: s.x, z: s.z + 1 }
+  const dx = next.x - s.x, dz = next.z - s.z
+  const len = Math.hypot(dx, dz) || 1
+  const ux = dx / len, uz = dz / len
+  const yaw = Math.atan2(dx, dz) // doorway (+Z local) faces along the path
+  const W = 3.2, H = 2.4, D = 3.2
+  const hut = new TransformNode('spawnHut', scene)
+  hut.position.set(s.x - ux * (D / 2), 0, s.z - uz * (D / 2))
+  hut.rotation.y = yaw
+  const wood = mat('hutWood', 0.45, 0.3, 0.18)
+  const roof = mat('hutRoof', 0.6, 0.22, 0.2)
+  const dark = mat('hutDoor', 0.05, 0.05, 0.07)
+  const body = MeshBuilder.CreateBox('hutBody', { width: W, height: H, depth: D }, scene)
+  body.material = wood; body.position.y = H / 2; body.parent = hut; body.isPickable = false
+  // peaked roof: a 4-sided pyramid turned 45° to sit square on the body
+  const r = MeshBuilder.CreateCylinder('hutRoofTop', { diameterTop: 0, diameterBottom: W * 1.5, height: 1.6, tessellation: 4 }, scene)
+  r.material = roof; r.rotation.y = Math.PI / 4; r.position.y = H + 0.7; r.parent = hut; r.isPickable = false
+  // dark doorway on the front (+Z) face that the enemies walk out of
+  const door = MeshBuilder.CreateBox('hutDoorPanel', { width: 1.5, height: 1.9, depth: 0.25 }, scene)
+  door.material = dark; door.position.set(0, 0.95, D / 2 + 0.02); door.parent = hut; door.isPickable = false
+  envProps.push(hut)
+  env.addShadowCaster(hut)
+}
+
 // build the road, build-cell pads and base for the current level (the green
 // 'ground' plane stays as the clean grass surface + aim-pick / collision target)
 function buildEnvironment() {
@@ -197,6 +225,7 @@ function buildEnvironment() {
     }
   }
   placeTile('tile.spawn', level.spawn.x, level.spawn.z) // mark the entry tile
+  buildSpawnHut() // structure enemies emerge from
 
   for (const c of level.cells) {
     const pad = MeshBuilder.CreateBox('cell', { size: 2.2 }, scene)
