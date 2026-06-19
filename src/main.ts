@@ -348,14 +348,18 @@ scene.onPointerDown = (_evt, pick) => {
   if (rig.mode !== 'top' || over) return
   if (!pick?.pickedPoint) return
   // upgrade if clicked an existing tower
-  const clickedTower = [...towerViews].find(([, v]) => v.mesh === pick.pickedMesh)
+  const clickedTower = [...towerViews].find(([, v]) => {
+    let n = pick.pickedMesh as any
+    while (n) { if (n === v.mesh) return true; n = n.parent }
+    return false
+  })
   if (clickedTower) { if (tm.upgrade(clickedTower[0])) clickedTower[1].sync(); return }
   if (!selectedKind) { heroCtrl.triggerFire(); return } // no tower selected -> hero shoots toward the click
   const cell = level.cellAt(pick.pickedPoint.x, pick.pickedPoint.z, 2)
   if (!cell) return
   if (cell.occupied) { flash('Клетка занята'); return }
   const t = tm.build(selectedKind, cell)
-  if (t) towerViews.set(t, new TowerView(scene, t))
+  if (t) towerViews.set(t, new TowerView(scene, assets, t))
   else flash('Не хватает золота')
 }
 

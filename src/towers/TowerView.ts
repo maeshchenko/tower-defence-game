@@ -1,5 +1,6 @@
-import { Scene, MeshBuilder, StandardMaterial, Color3, Vector3, Mesh, LinesMesh } from '@babylonjs/core'
+import { Scene, MeshBuilder, Color3, Vector3, TransformNode, LinesMesh } from '@babylonjs/core'
 import { Tower } from './Tower'
+import { AssetManager } from '../rendering/AssetManager'
 
 const COLOR = {
   cannon: new Color3(0.5,0.5,0.55),
@@ -15,13 +16,11 @@ for (let i = 0; i <= 64; i++) {
 }
 
 export class TowerView {
-  readonly mesh: Mesh
+  readonly mesh: TransformNode
   private ring: LinesMesh
-  constructor(scene: Scene, private tower: Tower) {
-    this.mesh = MeshBuilder.CreateCylinder('tower', { height: 1.5, diameter: 1.2 }, scene)
-    const m = new StandardMaterial('tm', scene); m.diffuseColor = COLOR[tower.kind]
-    this.mesh.material = m
-    this.mesh.position.set(tower.pos.x, 0.75, tower.pos.z)
+  constructor(scene: Scene, assets: AssetManager, private tower: Tower) {
+    this.mesh = assets.instance('tower.' + tower.kind)
+    this.mesh.position.set(tower.pos.x, 0, tower.pos.z)
     // thin dashed range ring on the ground (unit radius, scaled to range in sync)
     this.ring = MeshBuilder.CreateDashedLines('range', { points: RING_POINTS, dashSize: 2, gapSize: 2, dashNb: 80 }, scene)
     this.ring.color = COLOR[tower.kind]
@@ -30,10 +29,12 @@ export class TowerView {
     this.sync()
   }
   sync() {
-    this.mesh.scaling.y = 1 + this.tower.level * 0.25
-    this.mesh.position.y = 0.75 * this.mesh.scaling.y
+    const grow = 1 + this.tower.level * 0.15
+    const base = (this.mesh.metadata?.baseScale as number) ?? this.mesh.scaling.x
+    this.mesh.metadata = { ...(this.mesh.metadata ?? {}), baseScale: base }
+    this.mesh.scaling.setAll(base * grow)
     const r = this.tower.stats.range
     this.ring.scaling.set(r, 1, r)
   }
-  dispose() { this.mesh.dispose(); this.ring.dispose() }
+  dispose() { this.mesh.dispose(false, true); this.ring.dispose() }
 }
