@@ -1,6 +1,7 @@
 import '@babylonjs/loaders/glTF'
 import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode } from '@babylonjs/core'
 import { AssetManager } from './rendering/AssetManager'
+import { ClipPlayer } from './rendering/ClipPlayer'
 import { EventBus } from './core/EventBus'
 import { Vec3 } from './core/Vec3'
 import { GameState } from './core/GameState'
@@ -88,18 +89,35 @@ const hud = new HUD(state, heroState); hud.mount()
 // already points +Z at the cursor, so no extra offset is needed to face the aim.
 const HERO_FACING_OFFSET = 0
 let heroBody!: TransformNode
+let heroClips: ClipPlayer | undefined
+let heroLast: { x: number; z: number } | null = null
+let heroBusy = false // an attack one-shot is playing; don't override with locomotion
 
 function makeHero() {
   heroBody = assets.instance('hero.knight')
   heroBody.getChildMeshes().forEach((m) => (m.isPickable = false))
-  assets.playIdle(heroBody)
+  heroClips = new ClipPlayer(assets.getAnimationGroups(heroBody))
+  heroClips.play(/idle/i)
+}
+
+// play the hero's swing once when a shot is fired, then resume locomotion
+function heroAttackAnim() {
+  if (!heroClips) return
+  heroBusy = true
+  heroClips.play(/melee_attack/i, { loop: false, force: true, onEnd: () => { heroBusy = false; heroClips!.reset() } })
 }
 
 function syncHero() {
-  heroBody.position.set(heroCtrl.pos.x, 0, heroCtrl.pos.z)
+  const p = heroCtrl.pos
+  heroBody.position.set(p.x, 0, p.z)
   heroBody.rotation.y = heroCtrl.yaw + HERO_FACING_OFFSET
   // visible from above when alive; hidden in first-person or while respawning
   heroBody.setEnabled(rig.mode !== 'hero' && heroState.alive)
+  if (heroClips && !heroBusy) {
+    const moving = heroLast ? (p.x - heroLast.x) ** 2 + (p.z - heroLast.z) ** 2 > 1e-6 : false
+    heroClips.play(moving ? /running_a$/i : /idle/i)
+  }
+  heroLast = { x: p.x, z: p.z }
   rig.syncHero(heroCtrl.pos)
 }
 
@@ -109,6 +127,7 @@ const buildMenu = new BuildMenu((k) => { selectedKind = k }, {
 }); buildMenu.mount()
 
 const views = new Map<Enemy, EnemyView>()
+const corpses: EnemyView[] = [] // dying enemies playing their death clip before disposal
 const towerViews = new Map<Tower, TowerView>()
 let over = false
 
@@ -169,6 +188,7 @@ function buildProp(p: Prop) {
 // tear down the current map and load map i (gold/lives carry over via shared GameState)
 function loadMap(i: number) {
   for (const v of views.values()) v.dispose(); views.clear()
+  for (const c of corpses) c.dispose(); corpses.length = 0
   for (const v of towerViews.values()) v.dispose(); towerViews.clear()
   for (const p of projectiles) p.mesh.dispose(false, true); projectiles.length = 0
   for (const m of envMeshes) m.dispose(); envMeshes = []
@@ -266,7 +286,9 @@ function applyHit(target: Enemy, damage: number, slow?: number) {
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
     state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty })
-    views.get(target)!.dispose(); views.delete(target); wm.remove(target)
+    const v = views.get(target)!; views.delete(target); wm.remove(target)
+    // play the death animation as a corpse, then self-remove from the list
+    corpses.push(v); v.die(() => { const i = corpses.indexOf(v); if (i >= 0) corpses.splice(i, 1) })
   }
 }
 function updateProjectiles(dt: number) {
@@ -318,6 +340,7 @@ function updateProjectiles(dt: number) {
 // hero shot handling: spawn its visible projectile; damage lands on arrival (applyHit)
 function processHeroShot(shot: HeroShot | null) {
   if (!shot) return
+  heroAttackAnim()
   fireHeroShot(shot.from, shot.dir, shot.damage)
 }
 
