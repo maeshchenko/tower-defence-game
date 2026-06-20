@@ -53,7 +53,7 @@ export class Sfx {
   }
 
   shoot() { this.blip('shoot', 660, 0.08, 'square', 0.05, 240) }
-  hit() { this.blip('hit', 320, 0.06, 'sawtooth', 0.07, 150); this.noise('hit', 0.04, 0.04) }
+  hit() { this.blip('hit', 320, 0.06, 'sawtooth', 0.07, 150); this.noise('hit-noise', 0.04, 0.04) }
   death() { this.noise('death', 0.22, 0.14, 4, 25) }
   build() { this.blip('build', 440, 0.1, 'triangle', 0.12, 880, 3, 60) }
   deny() { this.blip('deny', 160, 0.16, 'square', 0.1, undefined, 2, 120) }
