@@ -45,9 +45,10 @@ const PLAN: { kind: PropKind; count: number; min: number; max: number; clear: nu
   { kind: 'rock', count: 8, min: 0.8, max: 2.2, clear: 2.4 },
   { kind: 'crate', count: 5, min: 0.9, max: 1.4, clear: 2.4 },
   { kind: 'tree', count: 6, min: 0.6, max: 0.9, clear: 2.6 },
-  { kind: 'bush', count: 12, min: 0.8, max: 1.8, clear: 1.8 },
-  { kind: 'mound', count: 5, min: 2.5, max: 5, clear: 1.5 },
-  { kind: 'patch', count: 14, min: 1.5, max: 4, clear: 1.0 },
+  // clear >= road half-width (1.2) + margin so decor never gets buried under the raised road
+  { kind: 'bush', count: 12, min: 0.8, max: 1.8, clear: 2.4 },
+  { kind: 'mound', count: 5, min: 2.5, max: 5, clear: 2.2 },
+  { kind: 'patch', count: 14, min: 1.5, max: 4, clear: 2.2 },
 ]
 
 // generate a stable set of decor props + hero obstacles for a level

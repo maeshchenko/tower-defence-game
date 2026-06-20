@@ -27,6 +27,7 @@ export class TowerView {
   mesh!: TransformNode
   private ring: LinesMesh
   private builtLevel = -1
+  private restScale = 1 // model's natural uniform scale; kickback animates relative to this
   constructor(scene: Scene, private assets: AssetManager, private tower: Tower, private hooks?: TowerViewHooks) {
     this.ring = MeshBuilder.CreateDashedLines('range', { points: RING_POINTS, dashSize: 2, gapSize: 2, dashNb: 80 }, scene)
     this.ring.color = COLOR[tower.kind]
@@ -43,6 +44,7 @@ export class TowerView {
     node.position.set(this.tower.pos.x, 0, this.tower.pos.z)
     node.getChildMeshes().forEach((m) => (m.isPickable = true)) // must stay pickable so clicks select the tower
     this.mesh = node
+    this.restScale = node.scaling.x // uniform (setAll in AssetManager); baseline for kickback
     this.builtLevel = this.tower.level
     this.hooks?.add(node)
   }
@@ -51,7 +53,10 @@ export class TowerView {
   applyYaw(yaw: number) { this.mesh.rotation.y = yaw + TOWER_FACING_OFFSET }
 
   kickback() {
-    const s = this.mesh.scaling.x
+    // animate from the FIXED rest scale, never the live scaling — otherwise a fast
+    // re-trigger (tesla at 3× speed) reads a mid-squash value as baseline and the
+    // scale compounds 1.08× per shot, ballooning the tower past the map.
+    const s = this.restScale
     const anim = new Animation('kick', 'scaling', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT)
     anim.setKeys([
       { frame: 0, value: new Vector3(s, s, s) },

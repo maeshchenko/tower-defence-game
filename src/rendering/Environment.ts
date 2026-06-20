@@ -21,13 +21,13 @@ export class Environment {
     // ~45° rake so casters throw a clear, object-length shadow (reads as a real sun)
     this.sun = new DirectionalLight('sun', new Vector3(-0.45, -0.7, -0.5), scene)
     this.sun.position = new Vector3(30, 42, 30)
-    this.sun.intensity = 1.15
+    this.sun.intensity = 1.4
     this.sun.diffuse = new Color3(1, 0.96, 0.86)
     // matte/toon: near-zero specular so surfaces don't show a blinding sun hotspot
     this.sun.specular = new Color3(0.05, 0.05, 0.05)
 
     // hemi becomes cool ambient fill so shadows aren't pure black
-    this.fill.intensity = 0.35
+    this.fill.intensity = 0.55
     this.fill.diffuse = new Color3(0.85, 0.9, 1)
     this.fill.groundColor = new Color3(0.35, 0.4, 0.3)
     this.fill.specular = new Color3(0, 0, 0)
@@ -41,8 +41,13 @@ export class Environment {
     const ip = this.pipeline.imageProcessing
     ip.toneMappingEnabled = true
     ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES
-    ip.exposure = 1.0
-    ip.contrast = 1.08
+    ip.exposure = 1.15
+    ip.contrast = 1.1
+    // vignette: subtle corner darkening so the eye settles on the island (not a heavy frame)
+    ip.vignetteEnabled = true
+    ip.vignetteWeight = 1.0
+    ip.vignetteColor = new Color4(0.06, 0.08, 0.12, 0)
+    ip.vignetteCameraFov = 0.9
     this.pipeline.bloomThreshold = 0.85
     this.pipeline.bloomWeight = 0.5
     this.pipeline.bloomScale = 0.5
@@ -52,6 +57,16 @@ export class Environment {
 
   setReceiver(mesh: AbstractMesh): void {
     mesh.receiveShadows = true
+  }
+
+  // fog fades to the sky's horizon haze (not flat blue) so distant geometry reads as depth
+  setHorizonColor(c: Color3): void {
+    this.scene.fogColor = c.clone()
+  }
+
+  // toggle tilt-shift DOF (off in third-person so the ground-level world looks real, not toy)
+  setDofEnabled(on: boolean): void {
+    this.pipeline.depthOfFieldEnabled = on
   }
 
   addShadowCaster(node: TransformNode): void {
@@ -71,6 +86,14 @@ export class Environment {
     // post toggles
     this.pipeline.fxaaEnabled = cfg.fxaa
     this.pipeline.bloomEnabled = cfg.bloom
+
+    // tilt-shift depth-of-field: toy-diorama look from the top-down view (high only)
+    this.pipeline.depthOfFieldEnabled = cfg.dof
+    if (cfg.dof) {
+      this.pipeline.depthOfField.focusDistance = 45000 // board centre (mm)
+      this.pipeline.depthOfField.fStop = 1.4
+      this.pipeline.depthOfField.focalLength = 60
+    }
 
     // glow layer
     if (cfg.glow && !this.glow) { this.glow = new GlowLayer('glow', this.scene); this.glow.intensity = 0.7 }
@@ -96,7 +119,7 @@ export class Environment {
 
     // fog
     this.scene.fogMode = cfg.fog ? Scene.FOGMODE_EXP2 : Scene.FOGMODE_NONE
-    this.scene.fogDensity = 0.011
+    this.scene.fogDensity = 0.006 // lighter so distant islands/horizon read as depth, not a wall
   }
 
   dispose(): void {

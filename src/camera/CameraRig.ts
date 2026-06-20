@@ -1,5 +1,6 @@
 import { Scene, ArcRotateCamera, Vector3 } from '@babylonjs/core'
 import { Vec3 } from '../core/Vec3'
+import { ISO_BETA, PRESET_ALPHAS, nextPresetAlpha, easeAlpha } from './CameraPresets'
 
 export type ViewMode = 'top' | 'hero'
 
@@ -10,9 +11,17 @@ export class CameraRig {
   mode: ViewMode = 'top'
   readonly topCam: ArcRotateCamera
   readonly heroCam: ArcRotateCamera // third-person follow camera, orbits the hero
+  private topTargetAlpha = PRESET_ALPHAS[0] // top cam eases toward this preset angle
+  private introT = 0 // >0 while the establishing zoom-in plays
   constructor(private scene: Scene, private canvas: HTMLCanvasElement, heroStart: Vec3) {
-    this.topCam = new ArcRotateCamera('top', -Math.PI / 2, 0.6, 45, Vector3.Zero(), scene)
+    this.topCam = new ArcRotateCamera('top', PRESET_ALPHAS[0], ISO_BETA, 45, Vector3.Zero(), scene)
     this.topCam.attachControl(canvas, true)
+    // lock tilt to the iso preset; no free orbit/pan — only wheel zoom remains
+    this.topCam.lowerBetaLimit = ISO_BETA; this.topCam.upperBetaLimit = ISO_BETA
+    this.topCam.lowerRadiusLimit = 30; this.topCam.upperRadiusLimit = 58
+    // remove pointer rotate/pan + keyboard pan; keep the mouse-wheel zoom input
+    this.topCam.inputs.removeByType('ArcRotateCameraPointersInput')
+    this.topCam.inputs.removeByType('ArcRotateCameraKeyboardMoveInput')
 
     this.heroCam = new ArcRotateCamera('hero', -Math.PI / 2, 1.0, 9,
       new Vector3(heroStart.x, HERO_LOOK_Y, heroStart.z), scene)
@@ -58,7 +67,27 @@ export class CameraRig {
       document.exitPointerLock?.()
       this.scene.activeCamera = this.topCam
       this.topCam.attachControl(this.canvas, true)
+      this.topTargetAlpha = this.topCam.alpha // avoid a jump back to preset[0]
     }
+  }
+
+  // rotate the top-down camera to the neighbouring 90deg preset (top mode only)
+  rotatePreset(dir: 1 | -1): void {
+    if (this.mode !== 'top') return
+    this.topTargetAlpha = nextPresetAlpha(this.topTargetAlpha, dir)
+  }
+
+  // short establishing zoom-in when a map loads (camera settles from far to the play radius)
+  playIntro(): void { this.introT = 1.2; this.topCam.radius = 63 }
+
+  // per-frame: ease the top camera toward its target preset angle (+ intro radius)
+  update(dt: number): void {
+    if (this.mode !== 'top') return
+    if (this.introT > 0) {
+      this.introT = Math.max(0, this.introT - dt)
+      this.topCam.radius = 45 + (this.introT / 1.2) * 18 // start far (63), settle to 45
+    }
+    this.topCam.alpha = easeAlpha(this.topCam.alpha, this.topTargetAlpha, dt)
   }
   setHeroPosition(p: Vec3) { this.syncHero(p) }
   get heroPosition(): Vec3 { const v = this.heroCam.target; return { x: v.x, y: v.y, z: v.z } }

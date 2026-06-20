@@ -29,6 +29,7 @@ const P = '/models/props/'
 const E = '/models/enemies/'
 const H = '/models/hero/'
 const TL = '/models/tiles/'
+const N = '/models/nature/' // Kenney Nature Kit (vertex-colored, no tint needed)
 
 export const MODELS: Record<string, ModelDef> = {
   // towers are generated below (tower.<kind>.<level>) so upgrades swap body + weapon
@@ -49,10 +50,21 @@ export const MODELS: Record<string, ModelDef> = {
   'ammo.mortar':  { url: A + 'weapon-ammo-boulder.glb',    targetHeight: 0.55 },
   'ammo.tesla':   { url: A + 'weapon-ammo-bullet.glb',     targetHeight: 0.35 },
 
-  'prop.tree':  { url: P + 'detail-tree-large.glb', targetHeight: 2.6 },
+  'prop.tree':  { url: N + 'tree_default.glb', targetHeight: 5.0 }, // tall tree, clearly towers over bushes
   'prop.rock':  { url: P + 'detail-rocks-large.glb', targetHeight: 1.4 },
   'prop.wall':  { url: P + 'wood-structure-high.glb', targetHeight: 1.7 },
   'prop.crate': { url: P + 'wood-structure-part.glb', targetHeight: 1.2 },
+
+  // decor scenery (Nature Kit) + build-cell pad (Kenney selection marker)
+  'cell.pad':          { url: '/models/markers/selection-a.glb', targetHeight: 1, footprint: 2.0, tileTopY: 0.04, tint: [0.45, 0.75, 1.0] },
+  'decor.bush':        { url: N + 'plant_bushDetailed.glb', targetHeight: 1.7 },
+  'decor.bushSmall':   { url: N + 'plant_bushSmall.glb', targetHeight: 1.1 },
+  'decor.bushLarge':   { url: N + 'plant_bushLarge.glb', targetHeight: 2.4 },
+  'decor.grass':       { url: N + 'grass.glb', targetHeight: 0.7 },
+  'decor.grassLarge':  { url: N + 'grass_large.glb', targetHeight: 1.1 },
+  'decor.flowerRed':   { url: N + 'flower_redA.glb', targetHeight: 0.5 },
+  'decor.flowerYellow':{ url: N + 'flower_yellowA.glb', targetHeight: 0.5 },
+  'decor.flowerPurple':{ url: N + 'flower_purpleA.glb', targetHeight: 0.5 },
 
   'base.keep':  { url: T + 'tower-round-base.glb', targetHeight: 3.0,
     parts: [T + 'tower-round-middle-a.glb', T + 'tower-round-roof-a.glb'], tint: [0.62, 0.6, 0.56] },
@@ -60,8 +72,9 @@ export const MODELS: Record<string, ModelDef> = {
   // ground/road tiles — beveled Kenney blocks laid on a grid (footprint-scaled,
   // top surface at y=0), flat-tinted to dodge the colormap-atlas mis-sample.
   'tile.ground': { url: TL + 'tile.glb', targetHeight: 1, footprint: 4.2, tileTopY: 0, tint: [0.28, 0.5, 0.26] },
-  'tile.road':   { url: TL + 'tile.glb', targetHeight: 1, footprint: 2.4, tileTopY: 0.06, tint: [0.4, 0.32, 0.24] },
+  'tile.road':   { url: TL + 'tile.glb', targetHeight: 1, footprint: 2.4, tileTopY: 0.08, tint: [0.62, 0.47, 0.3] },
   'tile.spawn':  { url: TL + 'tile.glb', targetHeight: 1, footprint: 2.4, tileTopY: 0.07, tint: [0.7, 0.3, 0.2] },
+  'tile.roadCorner': { url: TL + 'tile-corner-round.glb', targetHeight: 1, footprint: 2.4, tileTopY: 0.1, tint: [0.62, 0.47, 0.3] },
 }
 
 // Generate tower.<kind>.<level> (level 0..2). Upgrading swaps to a taller body tier

@@ -1,7 +1,7 @@
 import '@babylonjs/loaders/glTF'
-import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture, TrailMesh, LinesMesh } from '@babylonjs/core'
+import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, Color4, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture, TrailMesh, LinesMesh, ParticleSystem } from '@babylonjs/core'
 import { Environment } from './rendering/Environment'
-import { loadPreset, savePreset, nextPreset, resolveQuality, QualityPreset } from './rendering/Quality'
+import { loadPreset, savePreset, resolveQuality, QualityPreset } from './rendering/Quality'
 import { Screenshake } from './fx/Screenshake'
 import { Hitstop } from './fx/Hitstop'
 import { burst } from './fx/Particles'
@@ -17,6 +17,8 @@ import { Vec3 } from './core/Vec3'
 import { GameState } from './core/GameState'
 import { Level } from './world/Level'
 import { generateDecor, Prop, Obstacle } from './world/Decor'
+import { buildIsland } from './world/Island'
+import { Sky } from './rendering/Sky'
 import { CameraRig } from './camera/CameraRig'
 import { HeroState } from './hero/HeroState'
 import { HeroWeapon } from './hero/HeroWeapon'
@@ -103,18 +105,66 @@ for (const [x,z,w,d] of [[0,20,40,1],[0,-20,40,1],[20,0,1,40],[-20,0,1,40]] as c
 let quality: QualityPreset = loadPreset()
 const env = new Environment(scene, light, resolveQuality(quality))
 env.setReceiver(ground)
+const island = buildIsland(scene) // floating mesa under the play plane; visual only
+void island
+const sky = new Sky(scene)
+env.setHorizonColor(sky.horizonColor) // fog fades to the horizon haze, not flat blue
+sky.setClouds(resolveQuality(quality).clouds)
+sky.setDistantIslands(resolveQuality(quality).distant)
+
+// faint floating motes (pollen/sparkle) for atmosphere — med/high only
+function buildAmbientMotes() {
+  if (resolveQuality(quality).preset === 'low') return
+  const tex = new DynamicTexture('moteTex', { width: 32, height: 32 }, scene, false)
+  const c = tex.getContext() as CanvasRenderingContext2D
+  const g = c.createRadialGradient(16, 16, 0, 16, 16, 16)
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)')
+  c.fillStyle = g; c.fillRect(0, 0, 32, 32); tex.update(); tex.hasAlpha = true
+  const ps = new ParticleSystem('motes', 120, scene)
+  ps.particleTexture = tex
+  ps.emitter = new Vector3(0, 4, 0)
+  ps.minEmitBox = new Vector3(-20, 0, -20); ps.maxEmitBox = new Vector3(20, 8, 20)
+  ps.color1 = new Color4(1, 1, 0.85, 0.12); ps.color2 = new Color4(1, 1, 1, 0.07)
+  ps.colorDead = new Color4(1, 1, 1, 0)
+  ps.minSize = 0.04; ps.maxSize = 0.1
+  ps.minLifeTime = 4; ps.maxLifeTime = 8
+  ps.emitRate = 10
+  ps.direction1 = new Vector3(-0.2, 0.4, -0.2); ps.direction2 = new Vector3(0.2, 0.6, 0.2)
+  ps.gravity = new Vector3(0, 0.02, 0)
+  ps.start()
+}
+buildAmbientMotes()
+
+// visual rim along the play boundary so third-person doesn't show a bare slab edge:
+// scattered rocks give the hero a believable cliff lip, not a cut table edge. Static
+// (shared across maps) — built once in boot(), never torn down in loadMap.
+function buildRim() {
+  const B = 19.5 // just inside the 20-unit invisible walls
+  const step = 3
+  for (let t = -B; t <= B; t += step) {
+    for (const [x, z] of [[t, B], [t, -B], [B, t], [-B, t]] as const) {
+      const rock = assets.instance('prop.rock')
+      rock.position.set(x, -0.2, z)
+      rock.rotation.y = x + z // pseudo-varied yaw
+      const s = rock.scaling.x * (0.7 + (Math.abs(x * 7 + z * 3) % 5) / 8)
+      rock.scaling.set(s, s, s)
+      rock.getChildMeshes().forEach((m) => (m.isPickable = false))
+      env.addShadowCaster(rock)
+    }
+  }
+}
 
 const bus = new EventBus()
 const MAPS = Level.maps()
 const state = new GameState(bus, { totalWaves: 10 }) // 10 waves per map
 
-// shared environment materials
-const cellMat = new StandardMaterial('cellmat', scene); cellMat.diffuseColor = new Color3(0.3, 0.55, 0.8); cellMat.alpha = 0.85
-// decor materials (shared)
+// shared material factory (used by the spawn hut)
 const mat = (name: string, r: number, g: number, b: number) => { const m = new StandardMaterial(name, scene); m.diffuseColor = new Color3(r, g, b); m.specularColor = new Color3(0, 0, 0); return m }
-const bushMat = mat('bush', 0.22, 0.5, 0.22)
-const moundMat = mat('mound', 0.32, 0.42, 0.2)
-const patchMats = [mat('p0', 0.3, 0.4, 0.18), mat('p1', 0.38, 0.32, 0.2), mat('p2', 0.16, 0.38, 0.16)]
+// build-slot pad: flat translucent blue square on the grass — clearly a build tile,
+// no glow/portal look. Lit normally, semi-transparent so it sits on the field.
+const padMat = new StandardMaterial('padmat', scene)
+padMat.diffuseColor = new Color3(0.32, 0.58, 0.9); padMat.emissiveColor = new Color3(0.12, 0.28, 0.5)
+padMat.alpha = 0.6; padMat.specularColor = new Color3(0, 0, 0)
 
 let mapIndex = 0
 let level!: Level
@@ -140,7 +190,7 @@ const hud = new HUD(state, heroState, speed); hud.mount()
 const towerPanel = new TowerPanel(); towerPanel.mount()
 const settings = new Settings(audio, {
   get: () => quality,
-  set: (p) => { quality = p; env.applyQuality(resolveQuality(p)); savePreset(p) },
+  set: (p) => { quality = p; env.applyQuality(resolveQuality(p)); sky.setClouds(resolveQuality(p).clouds); sky.setDistantIslands(resolveQuality(p).distant); savePreset(p) },
 }); settings.mount()
 
 // KayKit Knight model — created after assets are preloaded in boot()
@@ -216,8 +266,8 @@ function buildSpawnHut() {
   const hut = new TransformNode('spawnHut', scene)
   hut.position.set(s.x - ux * (D / 2), 0, s.z - uz * (D / 2))
   hut.rotation.y = yaw
-  const wood = mat('hutWood', 0.45, 0.3, 0.18)
-  const roof = mat('hutRoof', 0.6, 0.22, 0.2)
+  const wood = mat('hutWood', 0.36, 0.27, 0.19)
+  const roof = mat('hutRoof', 0.34, 0.2, 0.18) // weathered dark red-brown, not bright red
   const dark = mat('hutDoor', 0.05, 0.05, 0.07)
   const body = MeshBuilder.CreateBox('hutBody', { width: W, height: H, depth: D }, scene)
   body.material = wood; body.position.y = H / 2; body.parent = hut; body.isPickable = false
@@ -249,8 +299,10 @@ function buildEnvironment() {
   buildSpawnHut() // structure enemies emerge from
 
   for (const c of level.cells) {
-    const pad = MeshBuilder.CreateBox('cell', { size: 2.2 }, scene)
-    pad.position.set(c.pos.x, 0.06, c.pos.z); pad.scaling.y = 0.04; pad.material = cellMat
+    // flat square build pad, lifted clear of the ground so it never z-fights/flickers
+    const pad = MeshBuilder.CreateBox('cell', { width: 2.0, height: 0.12, depth: 2.0 }, scene)
+    pad.position.set(c.pos.x, 0.1, c.pos.z)
+    pad.material = padMat; pad.isPickable = false
     envMeshes.push(pad)
   }
   const keep = assets.instance('base.keep')
@@ -268,7 +320,6 @@ function buildEnvironment() {
 
 let patchTick = 0
 function buildProp(p: Prop) {
-  const add = (m: Mesh) => { m.isPickable = false; envMeshes.push(m) }
   const SOLID_KEY: Record<string, string> = { wall: 'prop.wall', rock: 'prop.rock', crate: 'prop.crate', tree: 'prop.tree' }
   const key = SOLID_KEY[p.kind]
   if (key) {
@@ -283,14 +334,22 @@ function buildProp(p: Prop) {
     return
   }
   if (p.kind === 'bush') {
-    const m = MeshBuilder.CreateSphere('bush', { diameter: p.w, segments: 6 }, scene)
-    m.position.set(p.x, p.w * 0.3, p.z); m.scaling.y = 0.6; m.material = bushMat; add(m)
+    const key = p.w > 1.5 ? 'decor.bushLarge' : p.w > 1.0 ? 'decor.bush' : 'decor.bushSmall'
+    const node = assets.instance(key)
+    node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
+    node.getChildMeshes().forEach((m) => (m.isPickable = false))
+    env.addShadowCaster(node); envProps.push(node)
   } else if (p.kind === 'mound') {
-    const m = MeshBuilder.CreateSphere('mound', { diameter: p.w, segments: 10 }, scene)
-    m.position.set(p.x, 0, p.z); m.scaling.y = 0.22; m.material = moundMat; add(m)
-  } else { // patch
-    const m = MeshBuilder.CreateBox('patch', { width: p.w, height: 0.06, depth: p.d }, scene)
-    m.position.set(p.x, 0.04, p.z); m.rotation.y = p.rot; m.material = patchMats[(patchTick++) % patchMats.length]; add(m)
+    const node = assets.instance('decor.grassLarge') // leafy grass clump instead of a squashed sphere
+    node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
+    node.getChildMeshes().forEach((m) => (m.isPickable = false))
+    envProps.push(node)
+  } else { // patch — scatter grass tufts / flowers instead of a flat coloured box
+    const keys = ['decor.grass', 'decor.flowerRed', 'decor.flowerYellow', 'decor.flowerPurple'] as const
+    const node = assets.instance(keys[(patchTick++) % keys.length])
+    node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
+    node.getChildMeshes().forEach((m) => (m.isPickable = false))
+    envProps.push(node)
   }
 }
 
@@ -312,8 +371,9 @@ function loadMap(i: number) {
   buildEnvironment()
   heroCtrl.pos = { x: level.base.x, y: 0, z: level.base.z - 3 }
   syncHero()
+  rig.playIntro() // short establishing zoom-in on each map load
   selectedKind = null
-  nextWaveTimer = 8
+  awaitStart = true; nextWaveTimer = 0 // first wave of this map waits for Enter
 }
 
 bus.on('gameOver', ({ victory }) => {
@@ -336,9 +396,9 @@ const HERO_SHOT_COLOR = new Color3(0.6, 0.95, 1)
 const ENEMY_SHOT_COLOR = new Color3(1, 0.3, 0.25)
 
 // juice controllers: trauma-based screenshake + hitstop on big events
-const shake = new Screenshake()
+const shake = new Screenshake(2.8) // faster decay: each punch settles quickly so sustained fire/deaths don't pin the camera and blur the field
 const hitstop = new Hitstop()
-const SHAKE_AMP = 0.55 // peak camera targetScreenOffset; scaled down in third-person
+const SHAKE_AMP = 0.28 // peak camera targetScreenOffset; scaled down in third-person
 
 // a projectile homes onto a target enemy (tower shot, damage applied on arrival),
 // flies straight and hits enemies (hero shot), or flies straight at the hero (enemy shot).
@@ -449,7 +509,7 @@ function damageEnemy(target: Enemy, damage: number, slow?: number) {
   target.takeDamage(damage)
   floatText(target.pos.x, 1.7, target.pos.z, `-${damage} (${target.hp}/${target.maxHp})`, '#ffe27a')
   burst(scene, 'impact', target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.55))
-  shake.addTrauma(0.06)
+  shake.addTrauma(0.025) // small per-hit; kept low so sustained fire (tesla chains, mortar splash, 3×) doesn't pin the camera and blur the field. Death/boss punches stay big.
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
     state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty }); sfx.death()
@@ -597,14 +657,18 @@ function flash(msg: string) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.style.opacity = '0' }, 1200)
 }
 
-// auto-advance waves: a countdown runs during build phase; Enter starts immediately
-let nextWaveTimer = 8 // seconds before the first wave
+// auto-advance waves: a countdown runs during build phase; Enter starts immediately.
+// The FIRST wave of each map waits for an explicit Enter (awaitStart) — no auto-timer —
+// so the player always gets time to place towers before the map begins.
+let nextWaveTimer = 0
+let awaitStart = true // first wave of the current map; cleared on the first startNextWave
 // the keep defends itself: auto-fires at the nearest enemy in range (covers the
 // gap while the hero is respawning, and adds a last line of defence)
 const BASE_RANGE = 12, BASE_DMG = 8, BASE_RATE = 1 // units, damage, shots/sec
 let baseFireTimer = 0
 function startNextWave() {
   if (!started || over || state.phase !== 'build') return
+  awaitStart = false // first explicit start clears the manual gate
   if (nextWaveTimer > 0) { // reward starting early: 1 gold per second skipped
     const bonus = Math.ceil(nextWaveTimer)
     state.addGold(bonus); flash(`+${bonus}з за ранний старт`)
@@ -617,17 +681,15 @@ addEventListener('keydown', (e) => {
   if (e.key === 'Tab') {
     e.preventDefault(); rig.toggle()
     hud.setCrosshair(false); buildMenu.setVisible(rig.mode === 'top')
+    syncRotBar() // rotate buttons only make sense top-down
+    env.setDofEnabled(rig.mode === 'top' && resolveQuality(quality).dof) // toy-diorama DOF top-down only
   }
   if (e.key === 'Enter') startNextWave()
   if (e.key === ' ') { e.preventDefault(); speed.togglePause(); hud.update() } // Space = pause
   if (e.key === 'm' || e.key === 'M' || e.key === 'ь') audio.toggleMute() // mute toggle
-  if (e.key === 'q' || e.key === 'Q' || e.key === 'й') {
-    quality = nextPreset(quality)
-    env.applyQuality(resolveQuality(quality))
-    savePreset(quality)
-    flash(`Качество: ${quality}`)
-  }
-
+  // Q/E rotate the fixed-iso camera between its 4 preset corners (quality lives in the gear panel now)
+  if (e.key === 'q' || e.key === 'Q' || e.key === 'й') rig.rotatePreset(-1)
+  if (e.key === 'e' || e.key === 'E' || e.key === 'у') rig.rotatePreset(1)
 })
 
 // build / upgrade on click in top mode
@@ -704,6 +766,8 @@ scene.onPointerDown = (_evt, pick) => {
 scene.onBeforeRenderObservable.add(() => {
   // real time drives FX (shake/particles); sim dt is frozen to 0 during a hitstop
   const realDt = engine.getDeltaTime() / 1000
+  rig.update(realDt) // ease the top camera toward its preset angle / intro radius
+  sky.update(realDt) // drift the clouds
   const simScale = hitstop.update(realDt * 1000)
   const dt = realDt * simScale * speed.scale // pause (0) / 1×/2×/3× scale the sim; FX stay real-time
   heroState.tick(dt)
@@ -763,7 +827,8 @@ scene.onBeforeRenderObservable.add(() => {
     }
   } else {
     processHeroShot(heroCtrl.update(dt))
-    if (started && !over && state.phase === 'build' && nextWaveTimer > 0) {
+    // first wave of the map (awaitStart) never auto-starts — only Enter begins it
+    if (started && !over && state.phase === 'build' && !awaitStart && nextWaveTimer > 0) {
       nextWaveTimer -= dt
       if (nextWaveTimer <= 0) startNextWave()
     }
@@ -774,8 +839,9 @@ scene.onBeforeRenderObservable.add(() => {
   const activeCam = scene.activeCamera as { targetScreenOffset?: { set(x: number, y: number): void } } | null
   activeCam?.targetScreenOffset?.set(off.x, off.y)
   mapInfo.textContent = `Карта ${mapIndex + 1}/${MAPS.length}`
-  const showPreview = !over && state.phase === 'build' && nextWaveTimer > 0
-  hud.setWavePreview(showPreview ? wm.peek(state.wave).map((g) => ({ kind: g.kind, count: g.count })) : null, state.wave + 1, nextWaveTimer)
+  const showPreview = !over && state.phase === 'build' && (awaitStart || nextWaveTimer > 0)
+  // Infinity countdown tells the HUD to show "press Enter" instead of a ticking timer
+  hud.setWavePreview(showPreview ? wm.peek(state.wave).map((g) => ({ kind: g.kind, count: g.count })) : null, state.wave + 1, awaitStart ? Infinity : nextWaveTimer)
   hud.update()
 })
 
@@ -790,8 +856,23 @@ legend.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font-family:
 legend.innerHTML =
   `выбери башню → клик по клетке — строить<br>клик по башне — инфо · улучшить · продать<br>` +
   `без выбора: клик = выстрел героя · WASD — бег<br>` +
-  `Space — пауза · 1/2/3× — скорость · Enter — волна<br>Tab — вид · Q — качество · M — звук`
+  `Space — пауза · 1/2/3× — скорость · Enter — волна<br>Tab — вид · Q/E — поворот · M — звук`
 document.body.appendChild(legend)
+
+// camera rotate buttons (top-down only)
+const rotBar = document.createElement('div')
+rotBar.style.cssText = 'position:fixed;left:8px;bottom:60px;display:flex;gap:6px;z-index:6'
+for (const [label, dir] of [['⟲', -1], ['⟳', 1]] as const) {
+  const b = document.createElement('button')
+  b.textContent = label
+  b.style.cssText = 'font-family:monospace;font-size:18px;width:38px;height:38px;cursor:pointer;' +
+    'border:2px solid #ffd24d;background:#1b2330;color:#ffd24d;border-radius:6px'
+  b.onclick = () => rig.rotatePreset(dir)
+  rotBar.appendChild(b)
+}
+document.body.appendChild(rotBar)
+// hide rotate buttons in third-person (called from the Tab handler)
+function syncRotBar() { rotBar.style.display = rig.mode === 'top' ? 'flex' : 'none' }
 
 // --- front-end menus (title screen + restart) ---
 function menuButton(label: string): HTMLButtonElement {
@@ -833,6 +914,7 @@ async function boot() {
   overlay.remove()
   makeHero()
   loadMap(0)
+  buildRim() // static cliff-lip rocks around the play boundary (after assets preloaded)
   engine.runRenderLoop(() => scene.render())
   addEventListener('resize', () => engine.resize())
   buildMenu.setVisible(true)

@@ -95,8 +95,11 @@ export class HUD {
     if (!entries || entries.length === 0) { this.preview.style.display = 'none'; return }
     const parts = entries.map((e) => `${ENEMY_ICON[e.kind]}×${e.count} ${ENEMY_LABEL[e.kind]}`).join('  ·  ')
     this.preview.style.display = 'block'
-    this.preview.innerHTML = `<b style="color:${ACCENT}">Волна ${waveNumber}</b> через ${Math.ceil(countdown)}с ` +
-      `<span style="opacity:.7">(Enter — раньше)</span><br>${parts}`
+    // non-finite countdown = first wave of the map: wait for an explicit start, no timer
+    const when = isFinite(countdown)
+      ? `через ${Math.ceil(countdown)}с <span style="opacity:.7">(Enter — раньше)</span>`
+      : `<span style="opacity:.95;color:${ACCENT}">Нажми Enter — старт</span>`
+    this.preview.innerHTML = `<b style="color:${ACCENT}">Волна ${waveNumber}</b> ${when}<br>${parts}`
   }
 
   showEnd(victory: boolean) {

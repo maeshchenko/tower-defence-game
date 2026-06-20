@@ -9,6 +9,9 @@ export interface QualityConfig {
   ssao: boolean
   glow: boolean
   fog: boolean
+  clouds: number   // drifting cloud billboards around the island (0 = off)
+  distant: boolean // distant floating-island silhouettes on the horizon
+  dof: boolean     // tilt-shift depth-of-field (top-down only)
 }
 
 export type MiniStorage = { getItem(k: string): string | null; setItem(k: string, v: string): void }
@@ -19,10 +22,10 @@ const STORAGE_KEY = 'td.quality'
 export function resolveQuality(preset: QualityPreset): QualityConfig {
   const base = { preset, fxaa: true, glow: true, fog: true }
   switch (preset) {
-    case 'low': return { ...base, bloom: false, shadows: false, shadowMapSize: 0, ssao: false }
-    case 'high': return { ...base, bloom: true, shadows: true, shadowMapSize: 2048, ssao: true }
+    case 'low': return { ...base, bloom: false, shadows: false, shadowMapSize: 0, ssao: false, clouds: 0, distant: false, dof: false }
+    case 'high': return { ...base, bloom: true, shadows: true, shadowMapSize: 2048, ssao: true, clouds: 18, distant: true, dof: true }
     case 'med':
-    default: return { ...base, preset: 'med', bloom: true, shadows: true, shadowMapSize: 1024, ssao: false }
+    default: return { ...base, preset: 'med', bloom: true, shadows: true, shadowMapSize: 1024, ssao: false, clouds: 10, distant: true, dof: false }
   }
 }
 

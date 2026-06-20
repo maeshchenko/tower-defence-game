@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const KENNEY = join(root, 'kenney_tower-defense-kit/Models/GLB format')
+const NATURE = join(root, 'kenney_nature-kit/Models/GLB format')
 const ADV = join(root, 'assets-src/adventurers/addons/kaykit_character_pack_adventures/Characters/gltf')
 const SKEL = join(root, 'assets-src/skeletons/addons/kaykit_character_pack_skeletons/Characters/gltf')
 const OUT = join(root, 'public/models')
@@ -19,7 +20,17 @@ const KENNEY_MODELS = {
   ammo: ['weapon-ammo-cannonball', 'weapon-ammo-arrow', 'weapon-ammo-bullet', 'weapon-ammo-boulder'],
   props: ['detail-tree', 'detail-tree-large', 'detail-rocks', 'detail-rocks-large',
           'wood-structure', 'wood-structure-high', 'wood-structure-part'],
-  tiles: ['tile', 'tile-straight', 'tile-corner-square', 'tile-spawn', 'tile-end'],
+  tiles: ['tile', 'tile-straight', 'tile-corner-square', 'tile-corner-round', 'tile-spawn', 'tile-end'],
+  markers: ['selection-a', 'selection-b'],
+}
+// Kenney Nature Kit (CC0) — self-contained vertex-colored GLBs (no shared colormap),
+// so they copy plain (no Textures folder) and need no flat tint in models.ts.
+const NATURE_MODELS = {
+  nature: [
+    'plant_bushDetailed', 'plant_bushSmall', 'plant_bushLarge',
+    'tree_default', 'tree_oak', 'tree_detailed', 'tree_pineRoundA', 'tree_fat',
+    'grass', 'grass_large', 'flower_redA', 'flower_yellowA', 'flower_purpleA',
+  ],
 }
 const KAYKIT = {
   hero: [[ADV, 'Knight.glb']],
@@ -46,6 +57,17 @@ function copyKaykit(folder, entries) {
   }
 }
 
+function copyNature(folder, names) {
+  const dst = join(OUT, folder)
+  mkdirSync(dst, { recursive: true })
+  for (const n of names) {
+    const src = join(NATURE, n + '.glb')
+    if (!existsSync(src)) throw new Error('missing Nature model: ' + src)
+    cpSync(src, join(dst, n + '.glb'))
+  }
+}
+
 for (const [folder, names] of Object.entries(KENNEY_MODELS)) copyKenney(folder, names)
 for (const [folder, entries] of Object.entries(KAYKIT)) copyKaykit(folder, entries)
+for (const [folder, names] of Object.entries(NATURE_MODELS)) copyNature(folder, names)
 console.log('assets copied to', OUT)
