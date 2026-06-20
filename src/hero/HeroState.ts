@@ -7,7 +7,7 @@ export class HeroState {
   private timer = 0
   constructor(private bus: EventBus, opts?: { maxHp?: number; respawn?: number }) {
     this.maxHp = opts?.maxHp ?? 100
-    this.respawn = opts?.respawn ?? 5
+    this.respawn = opts?.respawn ?? 8
     this.hp = this.maxHp
   }
   get alive() { return this._alive }

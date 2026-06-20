@@ -466,7 +466,8 @@ function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: numbe
   const ball = spawnModelShot('ammo.sniper', from.x, from.y, from.z)
   aimProjectile(ball, dir)
   const trail = attachTrail(scene, ball, HERO_SHOT_COLOR)
-  projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage, trail })
+  // hero shots pierce ALL armor — he's the mobile anti-armor finisher (his niche)
+  projectiles.push({ mesh: ball, dir: new Vector3(dir.x, dir.y, dir.z).normalize(), ttl: 1.5, damage, trail, pierce: 999 })
 }
 // enemy fires a straight (non-homing) shot at where the hero is now — dodge by moving
 function fireEnemyShot(from: { x: number; z: number }, heroPos: Vec3, damage: number) {
@@ -654,7 +655,7 @@ function updateProjectiles(dt: number) {
           const r = ENEMY_RADIUS[e.kind] + PROJ_HIT
           const hdx = ep.x - pp.x, hdz = ep.z - pp.z
           if (hdx * hdx + hdz * hdz < r * r && Math.abs(pp.y - 0.8) < 0.95) {
-            applyHit(e, p.damage); killProjectile(p); projectiles.splice(i, 1); break
+            applyHit(e, p.damage, undefined, { pierce: p.pierce }); killProjectile(p); projectiles.splice(i, 1); break
           }
         }
       }

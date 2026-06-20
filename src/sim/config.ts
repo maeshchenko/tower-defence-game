@@ -70,7 +70,7 @@ export const SIM_ECONOMY = {
 // Generous range approximates mobility + perfect player aim; respawn ignored
 // (assumes always up) -> this OVERSTATES the hero, so if towers still matter
 // here they matter for real. Used only by the hero-probe in the report.
-export const SIM_HERO = { range: 13, damage: 25, fireRate: 4, pierce: 0 }
+export const SIM_HERO = { range: 13, damage: 22, fireRate: 4, pierce: 999 }
 
 // the self-defending keep (auto-fires at nearest enemy). Range cut from 12->6
 // and dmg 8->5: at range 12 the keep covered nearly a whole ~30-unit map and

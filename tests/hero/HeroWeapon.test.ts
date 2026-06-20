@@ -13,4 +13,7 @@ describe('HeroWeapon', () => {
     w.fire(); w.tick(0.3)
     expect(w.canFire()).toBe(true)
   })
+  it('default damage is 22 (secondary hero: punchy but not a carry)', () => {
+    expect(new HeroWeapon().fire()).toBe(22)
+  })
 })
