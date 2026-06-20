@@ -17,7 +17,9 @@ export class AssetManager {
       for (const p of def.parts ?? []) urls.add(p)
     }
     await Promise.all([...urls].map(async (url) => {
-      const c = await LoadAssetContainerAsync(url, scene)
+      // url is absolute ('/models/...'); prefix with Vite BASE_URL so it resolves
+      // under the deploy subpath (e.g. GitHub Pages '/tower-defence-game/').
+      const c = await LoadAssetContainerAsync(import.meta.env.BASE_URL + url.replace(/^\//, ''), scene)
       this.containers.set(url, c)
     }))
   }

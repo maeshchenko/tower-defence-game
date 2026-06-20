@@ -39,6 +39,9 @@ import { TowerPanel } from './ui/TowerPanel'
 const canvas = document.getElementById('app') as HTMLCanvasElement
 const engine = new Engine(canvas, true)
 const scene = new Scene(engine)
+// skip Babylon's automatic per-move raycast; we pick manually only when in top-down
+// build mode (see onPointerMove), so hovering in 3rd-person costs no raycast.
+scene.skipPointerMovePicking = true
 const assets = new AssetManager()
 const audio = new AudioBus()
 const sfx = new Sfx(audio)
@@ -155,7 +158,7 @@ function rebuildBoundary(half: number) {
       rock.rotation.y = x + z // pseudo-varied yaw
       const s = rock.scaling.x * (0.7 + (Math.abs(x * 7 + z * 3) % 5) / 8)
       rock.scaling.set(s, s, s)
-      rock.getChildMeshes().forEach((m) => (m.isPickable = false))
+      rock.getChildMeshes().forEach((m) => { m.isPickable = false; m.freezeWorldMatrix() })
       env.addShadowCaster(rock); rimRocks.push(rock)
     }
   }
@@ -277,7 +280,7 @@ let started = false // gates wave start until the player presses Play on the tit
 function placeTile(key: string, x: number, z: number) {
   const t = assets.instance(key)
   t.position.x = x; t.position.z = z
-  t.getChildMeshes().forEach((m) => (m.isPickable = false))
+  t.getChildMeshes().forEach((m) => { m.isPickable = false; m.freezeWorldMatrix() })
   envProps.push(t)
 }
 
@@ -305,6 +308,7 @@ function buildSpawnHut() {
   // dark doorway on the front (+Z) face that the enemies walk out of
   const door = MeshBuilder.CreateBox('hutDoorPanel', { width: 1.5, height: 1.9, depth: 0.25 }, scene)
   door.material = dark; door.position.set(0, 0.95, D / 2 + 0.02); door.parent = hut; door.isPickable = false
+  for (const m of [body, r, door]) m.freezeWorldMatrix() // static hut: never moves after placement
   envProps.push(hut)
   env.addShadowCaster(hut)
 }
@@ -331,12 +335,12 @@ function buildEnvironment() {
     // flat square build pad, lifted clear of the ground so it never z-fights/flickers
     const pad = MeshBuilder.CreateBox('cell', { width: 2.0, height: 0.12, depth: 2.0 }, scene)
     pad.position.set(c.pos.x, 0.1, c.pos.z)
-    pad.material = padMat; pad.isPickable = false
+    pad.material = padMat; pad.isPickable = false; pad.freezeWorldMatrix() // never moves (only setEnabled/material swap)
     envMeshes.push(pad); pads.set(c.id, pad)
   }
   const keep = assets.instance('base.keep')
   keep.position.set(level.base.x, 0, level.base.z)
-  keep.getChildMeshes().forEach((m) => (m.isPickable = false))
+  keep.getChildMeshes().forEach((m) => { m.isPickable = false; m.freezeWorldMatrix() })
   env.addShadowCaster(keep)
   envProps.push(keep)
 
@@ -369,6 +373,7 @@ function buildProp(p: Prop) {
     node.scaling.set(base * (p.w / 1.5), base * (p.h / 1.5), base * (p.d / 1.5))
     node.getChildMeshes().forEach((m) => { m.isPickable = false })
     groundNode(node)
+    node.getChildMeshes().forEach((m) => m.freezeWorldMatrix()) // static decor: lock world matrix after grounding
     env.addShadowCaster(node)
     envProps.push(node)
     return
@@ -378,18 +383,19 @@ function buildProp(p: Prop) {
     const node = assets.instance(key)
     node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
     node.getChildMeshes().forEach((m) => (m.isPickable = false))
-    groundNode(node); env.addShadowCaster(node); envProps.push(node)
+    groundNode(node); node.getChildMeshes().forEach((m) => m.freezeWorldMatrix())
+    env.addShadowCaster(node); envProps.push(node)
   } else if (p.kind === 'mound') {
     const node = assets.instance('decor.grassLarge') // leafy grass clump
     node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
     node.getChildMeshes().forEach((m) => (m.isPickable = false))
-    groundNode(node); envProps.push(node)
+    groundNode(node); node.getChildMeshes().forEach((m) => m.freezeWorldMatrix()); envProps.push(node)
   } else { // patch — scatter grass tufts / flowers instead of a flat coloured box
     const keys = ['decor.grass', 'decor.grassLarge', 'decor.flowerRed', 'decor.flowerYellow', 'decor.flowerPurple'] as const
     const node = assets.instance(keys[(patchTick++) % keys.length])
     node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
     node.getChildMeshes().forEach((m) => (m.isPickable = false))
-    groundNode(node); envProps.push(node)
+    groundNode(node); node.getChildMeshes().forEach((m) => m.freezeWorldMatrix()); envProps.push(node)
   }
 }
 
@@ -426,6 +432,11 @@ function loadMap(i: number) {
   const worldScale = half / 40 // base ground is 80 (half 40); island built to match
   ground.scaling.set(worldScale, 1, worldScale)
   island.scaling.set(worldScale, 1, worldScale)
+  // static terrain: freeze world matrices so they aren't recomputed every frame
+  // (re-frozen each map load, after the per-map rescale above)
+  ground.freezeWorldMatrix()
+  island.freezeWorldMatrix()
+  for (const m of island.getChildMeshes()) m.freezeWorldMatrix()
   rebuildBoundary(half)
   heroCtrl.setBound(half - 1) // hero may roam the whole map, just inside the rim
   rig.playIntro() // short establishing zoom-in on each map load
@@ -477,10 +488,12 @@ function spawnModelShot(key: string, x: number, y: number, z: number): Transform
 }
 // Point a projectile model's nose (local +Z, e.g. the arrow shaft) along its velocity.
 const TMP_AIM = new Vector3()
+const TMP_LOOK = new Vector3()
 function aimProjectile(node: TransformNode, dir: { x: number; y: number; z: number }) {
   TMP_AIM.set(dir.x, dir.y, dir.z)
   if (TMP_AIM.lengthSquared() < 1e-8) return
-  node.lookAt(node.position.add(TMP_AIM)) // lookAt aligns local +Z to the target
+  node.position.addToRef(TMP_AIM, TMP_LOOK) // no per-frame alloc (runs for every projectile)
+  node.lookAt(TMP_LOOK) // lookAt aligns local +Z to the target
 }
 const AMMO_KEY: Record<TowerKind, string> = {
   cannon: 'ammo.cannon', sniper: 'ammo.sniper', slow: 'ammo.slow', mortar: 'ammo.mortar', tesla: 'ammo.tesla',
@@ -664,16 +677,19 @@ function updateProjectiles(dt: number) {
       p.mesh.position.set(nx, 0.6 + p.arc.h * Math.sin(prog * Math.PI), nz)
       p.mesh.rotation.x += dt * 6 // tumble the boulder
     } else if (p.target) {
-      const tgt = new Vector3(p.target.pos.x, 0.8, p.target.pos.z) // follow the moving target
-      const dir = tgt.subtract(p.mesh.position)
-      aimProjectile(p.mesh, dir) // keep the model's nose on the (moving) target
-      if (dir.length() <= step) { // arrived — deal damage now
+      // follow the moving target — in-place math, no per-frame Vec3 allocation
+      const pm = p.mesh.position
+      const dx = p.target.pos.x - pm.x, dy = 0.8 - pm.y, dz = p.target.pos.z - pm.z
+      aimProjectile(p.mesh, { x: dx, y: dy, z: dz }) // keep the model's nose on the (moving) target
+      const dlen = Math.hypot(dx, dy, dz)
+      if (dlen <= step) { // arrived — deal damage now
         if (p.damage != null) applyHit(p.target, p.damage, p.slow, { splashRadius: p.splashRadius, chainCount: p.chainCount, chainRange: p.chainRange, pierce: p.pierce })
         killProjectile(p); projectiles.splice(i, 1); continue
       }
-      p.mesh.position.addInPlace(dir.normalize().scale(step))
+      const inv = step / dlen
+      pm.set(pm.x + dx * inv, pm.y + dy * inv, pm.z + dz * inv)
     } else if (p.dir) {
-      p.mesh.position.addInPlace(p.dir.scale(step))
+      p.mesh.position.addInPlaceFromFloats(p.dir.x * step, p.dir.y * step, p.dir.z * step)
       const pp = p.mesh.position
       if (p.vsHero) {
         // enemy shot vs the hero — by the hero's actual body (radius + height)
@@ -821,8 +837,9 @@ function towerAt(pick: { pickedMesh: unknown } | null | undefined): Tower | null
   return hit?.[0] ?? null
 }
 
-scene.onPointerMove = (_evt, pick) => {
+scene.onPointerMove = () => {
   if (rig.mode !== 'top') return
+  const pick = scene.pick(scene.pointerX, scene.pointerY) // manual (auto move-picking disabled)
   const t = towerAt(pick)
   hoveredView = t ? towerViews.get(t) ?? null : null
   refreshRings()
