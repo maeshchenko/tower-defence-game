@@ -51,6 +51,10 @@ export const MODELS: Record<string, ModelDef> = {
   'ammo.tesla':   { url: A + 'weapon-ammo-bullet.glb',     targetHeight: 0.35 },
 
   'prop.tree':  { url: N + 'tree_default.glb', targetHeight: 5.0 }, // tall tree, clearly towers over bushes
+  'prop.treeOak':      { url: N + 'tree_oak.glb', targetHeight: 5.6 },
+  'prop.treePine':     { url: N + 'tree_pineRoundA.glb', targetHeight: 5.8 },
+  'prop.treeFat':      { url: N + 'tree_fat.glb', targetHeight: 4.6 },
+  'prop.treeDetailed': { url: N + 'tree_detailed.glb', targetHeight: 5.2 },
   'prop.rock':  { url: P + 'detail-rocks-large.glb', targetHeight: 1.4 },
   'prop.wall':  { url: P + 'wood-structure-high.glb', targetHeight: 1.7 },
   'prop.crate': { url: P + 'wood-structure-part.glb', targetHeight: 1.2 },

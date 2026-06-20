@@ -30,7 +30,7 @@ import { EnemyKind } from './enemies/EnemyTypes'
 import { TowerManager } from './towers/TowerManager'
 import { TowerView, TowerViewHooks } from './towers/TowerView'
 import { Tower } from './towers/Tower'
-import { TowerKind, TOWER_DEFS } from './towers/TowerTypes'
+import { TowerKind, TOWER_DEFS, TOWER_LABEL } from './towers/TowerTypes'
 import { HUD } from './ui/HUD'
 import { BuildMenu } from './ui/BuildMenu'
 import { Speed } from './ui/Speed'
@@ -196,6 +196,7 @@ let obstacles: Obstacle[] = [] // solid props that block movement AND projectile
 const PROJ_R = 0.2
 function inObstacle(x: number, z: number): boolean {
   for (const o of obstacles) {
+    if (!o.opaque) continue // open frames (wall/crate) block movement, not shots
     if (Math.abs(x - o.x) < o.hw + PROJ_R && Math.abs(z - o.z) < o.hd + PROJ_R) return true
   }
   return false
@@ -261,7 +262,7 @@ buildMenu.mount()
 // banner that names the armed tower + how to place/cancel; null hides it
 function refreshBuildBanner() {
   const k = buildMenu.armed
-  hud.setBuildBanner(k ? `СТРОИМ: ${k.toUpperCase()} (${BUILD_COSTS[k]}з) · клик по клетке · ПКМ/Esc отмена · Shift — подряд` : null)
+  hud.setBuildBanner(k ? `СТРОИМ: ${TOWER_LABEL[k].toUpperCase()} (${BUILD_COSTS[k]}з) · клик по клетке · ПКМ/Esc отмена · Shift — подряд` : null)
 }
 
 const views = new Map<Enemy, EnemyView>()
@@ -347,9 +348,19 @@ function buildEnvironment() {
 }
 
 let patchTick = 0
+let treeTick = 0
+const TREE_KEYS = ['prop.tree', 'prop.treeOak', 'prop.treePine', 'prop.treeFat', 'prop.treeDetailed'] as const
+// drop a prop so its lowest point rests on the ground (y=0). instance() only
+// scales models; those whose GLB pivot is centered would otherwise sink half-under.
+function groundNode(node: TransformNode) {
+  node.computeWorldMatrix(true)
+  const min = node.getHierarchyBoundingVectors().min
+  if (isFinite(min.y)) node.position.y -= min.y
+}
 function buildProp(p: Prop) {
   const SOLID_KEY: Record<string, string> = { wall: 'prop.wall', rock: 'prop.rock', crate: 'prop.crate', tree: 'prop.tree' }
-  const key = SOLID_KEY[p.kind]
+  // trees rotate through the variety so forests don't look like cloned stamps
+  const key = p.kind === 'tree' ? TREE_KEYS[(treeTick++) % TREE_KEYS.length] : SOLID_KEY[p.kind]
   if (key) {
     const node = assets.instance(key)
     node.position.set(p.x, 0, p.z)
@@ -357,6 +368,7 @@ function buildProp(p: Prop) {
     const base = node.scaling.x
     node.scaling.set(base * (p.w / 1.5), base * (p.h / 1.5), base * (p.d / 1.5))
     node.getChildMeshes().forEach((m) => { m.isPickable = false })
+    groundNode(node)
     env.addShadowCaster(node)
     envProps.push(node)
     return
@@ -366,18 +378,18 @@ function buildProp(p: Prop) {
     const node = assets.instance(key)
     node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
     node.getChildMeshes().forEach((m) => (m.isPickable = false))
-    env.addShadowCaster(node); envProps.push(node)
+    groundNode(node); env.addShadowCaster(node); envProps.push(node)
   } else if (p.kind === 'mound') {
-    const node = assets.instance('decor.grassLarge') // leafy grass clump instead of a squashed sphere
+    const node = assets.instance('decor.grassLarge') // leafy grass clump
     node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
     node.getChildMeshes().forEach((m) => (m.isPickable = false))
-    envProps.push(node)
+    groundNode(node); envProps.push(node)
   } else { // patch — scatter grass tufts / flowers instead of a flat coloured box
-    const keys = ['decor.grass', 'decor.flowerRed', 'decor.flowerYellow', 'decor.flowerPurple'] as const
+    const keys = ['decor.grass', 'decor.grassLarge', 'decor.flowerRed', 'decor.flowerYellow', 'decor.flowerPurple'] as const
     const node = assets.instance(keys[(patchTick++) % keys.length])
     node.position.set(p.x, 0, p.z); node.rotation.y = p.rot
     node.getChildMeshes().forEach((m) => (m.isPickable = false))
-    envProps.push(node)
+    groundNode(node); envProps.push(node)
   }
 }
 
@@ -415,6 +427,7 @@ function loadMap(i: number) {
   ground.scaling.set(worldScale, 1, worldScale)
   island.scaling.set(worldScale, 1, worldScale)
   rebuildBoundary(half)
+  heroCtrl.setBound(half - 1) // hero may roam the whole map, just inside the rim
   rig.playIntro() // short establishing zoom-in on each map load
   selectedKind = null
   awaitStart = true; nextWaveTimer = 0 // first wave of this map waits for Enter
@@ -720,24 +733,40 @@ let awaitStart = true // first wave of the current map; cleared on the first sta
 const BASE_RANGE = 6, BASE_DMG = 5, BASE_RATE = 1 // keep: short last-ditch line (was 12/8 — covered whole small maps)
 let baseFireTimer = 0
 function startNextWave() {
-  if (!started || over || state.phase !== 'build') return
-  awaitStart = false // first explicit start clears the manual gate
-  if (nextWaveTimer > 0) { // reward starting early: 1 gold per second skipped
-    const bonus = Math.ceil(nextWaveTimer)
-    state.addGold(bonus); flash(`+${bonus}з за ранний старт`)
+  if (!started || over) return
+  if (state.phase === 'build') {
+    awaitStart = false // first explicit start clears the manual gate
+    if (nextWaveTimer > 0) { // reward starting early (skipping the breather)
+      const bonus = 8 + state.wave * 2
+      state.addGold(bonus); flash(`+${bonus}з за ранний старт`)
+    }
+    state.startWave(); wm.startWave(state.wave - 1); nextWaveTimer = -1; sfx.waveStart(); music.setState('tense')
+  } else if (state.phase === 'wave' && !wm.spawning && state.wave < state.totalWaves) {
+    // overlap: the current wave is done spawning — send the next NOW for a bonus.
+    // Leftover enemies carry over (risk), so chaining waves is an aggressive gold play.
+    const bonus = 10 + state.wave * 3
+    if (state.callNextWaveEarly()) {
+      state.addGold(bonus); flash(`+${bonus}з досрочная волна!`)
+      wm.startWave(state.wave - 1); sfx.waveStart(); music.setState('tense')
+    }
   }
-  state.startWave(); wm.startWave(state.wave - 1); nextWaveTimer = -1; sfx.waveStart(); music.setState('tense')
 }
 
 // input: Tab toggle, Enter start wave now
 addEventListener('keydown', (e) => {
   if (e.key === 'Tab') {
-    e.preventDefault(); rig.toggle()
+    e.preventDefault(); rig.toggle(heroCtrl.yaw)
     hud.setCrosshair(false); buildMenu.setVisible(rig.mode === 'top')
     syncRotBar() // rotate buttons only make sense top-down
     env.setDofEnabled(rig.mode === 'top' && resolveQuality(quality).dof) // toy-diorama DOF top-down only
   }
   if (e.key === 'Enter') startNextWave()
+  // DEV/TEST: Shift + 1..9/0 jumps straight to that map (0 = map 10)
+  if (e.shiftKey && /^Digit[0-9]$/.test(e.code) && started && !over) {
+    const d = Number(e.code.slice(5)) // Digit3 -> 3
+    const idx = d === 0 ? 9 : d - 1
+    if (idx < MAPS.length) { e.preventDefault(); loadMap(idx); flash(`Карта ${idx + 1} (тест)`) }
+  }
   if (e.key === 'Escape' && selectedKind) { selectedKind = null; buildMenu.disarm(); deselectTower(); updatePadVisuals(); refreshBuildBanner() }
   if (e.key === ' ') { e.preventDefault(); speed.togglePause(); hud.update() } // Space = pause
   if (e.key === 'm' || e.key === 'M' || e.key === 'ь') audio.toggleMute() // mute toggle

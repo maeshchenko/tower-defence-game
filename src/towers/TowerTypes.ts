@@ -1,4 +1,8 @@
 export type TowerKind = 'cannon' | 'slow' | 'sniper' | 'mortar' | 'tesla'
+// tower display names (English, shown uppercased by the UI)
+export const TOWER_LABEL: Record<TowerKind, string> = {
+  cannon: 'cannon', slow: 'slow', sniper: 'sniper', mortar: 'mortar', tesla: 'tesla',
+}
 export interface TowerLevel {
   range: number; fireRate: number; damage: number; slow?: number; cost: number
   splashRadius?: number // mortar: damage all enemies within this radius of the impact

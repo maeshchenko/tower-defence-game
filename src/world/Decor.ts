@@ -5,8 +5,9 @@ export type PropKind = 'rock' | 'bush' | 'crate' | 'wall' | 'tree' | 'mound' | '
 
 // a decorative/obstacle object: footprint w x d, height h, yaw rot
 export interface Prop { kind: PropKind; x: number; z: number; w: number; d: number; h: number; rot: number }
-// axis-aligned blocker the hero cannot walk through
-export interface Obstacle { x: number; z: number; hw: number; hd: number }
+// axis-aligned blocker the hero cannot walk through. `opaque` = also stops
+// projectiles (solid rock/tree); open frames (wall/crate) block movement only.
+export interface Obstacle { x: number; z: number; hw: number; hd: number; opaque: boolean }
 export interface Decor { props: Prop[]; obstacles: Obstacle[] }
 
 const SOLID: Record<PropKind, boolean> = {
@@ -40,14 +41,14 @@ function distToPath(x: number, z: number, path: Vec3[]): number {
 
 // per-kind: how many to place, footprint range, and how far it must clear the road
 const PLAN: { kind: PropKind; count: number; min: number; max: number; clear: number }[] = [
-  { kind: 'wall', count: 5, min: 3, max: 6, clear: 3.0 },
-  { kind: 'rock', count: 8, min: 0.8, max: 2.2, clear: 2.4 },
-  { kind: 'crate', count: 5, min: 0.9, max: 1.4, clear: 2.4 },
-  { kind: 'tree', count: 6, min: 0.6, max: 0.9, clear: 2.6 },
+  { kind: 'wall', count: 4, min: 3, max: 6, clear: 3.0 },
+  { kind: 'rock', count: 9, min: 0.8, max: 2.2, clear: 2.4 },
+  { kind: 'crate', count: 4, min: 0.9, max: 1.4, clear: 2.4 },
+  { kind: 'tree', count: 10, min: 0.6, max: 0.9, clear: 2.6 },
   // clear >= road half-width (1.2) + margin so decor never gets buried under the raised road
-  { kind: 'bush', count: 12, min: 0.8, max: 1.8, clear: 2.4 },
-  { kind: 'mound', count: 5, min: 2.5, max: 5, clear: 2.2 },
-  { kind: 'patch', count: 14, min: 1.5, max: 4, clear: 2.2 },
+  { kind: 'bush', count: 16, min: 0.8, max: 1.8, clear: 2.4 },
+  { kind: 'mound', count: 7, min: 2.5, max: 5, clear: 2.2 },
+  { kind: 'patch', count: 22, min: 1.5, max: 4, clear: 2.2 },
 ]
 
 // generate a stable set of decor props + hero obstacles for a level
@@ -84,7 +85,8 @@ export function generateDecor(level: Level, seed: number): Decor {
           // approximate the rotated footprint with an axis-aligned blocker
           const hw = (Math.abs(Math.cos(rot)) * w + Math.abs(Math.sin(rot)) * d) / 2
           const hd = (Math.abs(Math.sin(rot)) * w + Math.abs(Math.cos(rot)) * d) / 2
-          obstacles.push({ x, z, hw, hd })
+          // rock/tree are dense (stop shots too); wood frames block movement only
+          obstacles.push({ x, z, hw, hd, opaque: spec.kind === 'rock' || spec.kind === 'tree' })
         }
         break
       }

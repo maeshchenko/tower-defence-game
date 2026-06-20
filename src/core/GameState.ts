@@ -27,6 +27,12 @@ export class GameState {
     if (this._lives === 0) { this._phase = 'gameover'; this.bus.emit('gameOver', { victory: false }) }
   }
   startWave() { if (this._phase === 'build') { this._phase = 'wave'; this._wave += 1 } }
+  // send the next wave WHILE the current one is still on the field (overlap), for a
+  // gold bonus. Only once the current wave has finished spawning and not on the last.
+  callNextWaveEarly(): boolean {
+    if (this._phase !== 'wave' || this._wave >= this.totalWaves) return false
+    this._wave += 1; return true
+  }
   endWave() {
     if (this._phase !== 'wave') return
     if (this._wave >= this.totalWaves) { this._phase = 'gameover'; this.bus.emit('gameOver', { victory: true }) }

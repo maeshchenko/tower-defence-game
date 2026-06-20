@@ -1,4 +1,4 @@
-import { TowerKind } from '../towers/TowerTypes'
+import { TowerKind, TOWER_LABEL } from '../towers/TowerTypes'
 
 export interface TowerInfo {
   kind: TowerKind
@@ -66,7 +66,7 @@ export class TowerPanel {
     const slow = info.slow != null ? `<div>Замедление: <b>${Math.round((1 - info.slow) * 100)}%</b></div>` : ''
     const pierce = info.pierce ? `<div>Пробитие брони: <b>${info.pierce >= 999 ? '∞' : info.pierce}</b></div>` : ''
     this.body.innerHTML =
-      `<div style="color:${ACCENT};font-size:15px;text-transform:uppercase;margin-bottom:6px">${info.kind} · ур.${info.level + 1}</div>` +
+      `<div style="color:${ACCENT};font-size:15px;text-transform:uppercase;margin-bottom:6px">${TOWER_LABEL[info.kind]} · ур.${info.level + 1}</div>` +
       `<div>Урон: <b>${info.damage}</b></div>` +
       `<div>Дальность: <b>${info.range}</b></div>` +
       `<div>Скорострел.: <b>${info.fireRate.toFixed(1)}/с</b></div>` + slow + pierce

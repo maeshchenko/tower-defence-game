@@ -55,9 +55,12 @@ export class CameraRig {
 
   // keep the follow camera centred on the hero (called every frame)
   syncHero(p: Vec3) { this.heroCam.setTarget(new Vector3(p.x, HERO_LOOK_Y, p.z)) }
-  toggle() {
+  // carry the hero's facing (yaw) into the FPS camera so the view doesn't snap to a
+  // fixed heading on Tab — you keep looking where the hero was aiming top-down.
+  toggle(heroYaw?: number) {
     if (this.mode === 'top') {
       this.mode = 'hero'
+      if (heroYaw !== undefined) this.heroCam.alpha = Math.atan2(-Math.cos(heroYaw), -Math.sin(heroYaw))
       this.topCam.detachControl()
       this.scene.activeCamera = this.heroCam
       this.heroCam.attachControl(this.canvas, true) // wheel zoom; rotation via mouse-look

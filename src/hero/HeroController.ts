@@ -4,8 +4,8 @@ import { HeroWeapon } from './HeroWeapon'
 import { Vec3 } from '../core/Vec3'
 import { Obstacle } from '../world/Decor'
 
-const SPEED = 1.5
-const BOUND = 19 // keep hero inside the field
+const SPEED = 1.8
+const SPRINT_MULT = 2.4 // hold Shift to sprint
 const HERO_R = 0.4 // hero collision radius
 const EYE_FPS = 1.1
 const EYE_TOP = 0.6
@@ -24,7 +24,9 @@ export class HeroController {
   private wantFire = false
   private active = true // false while the hero is dead/respawning: no move, aim or fire
   private obstacles: Obstacle[] = []
+  private bound = 19 // play-area half-extent; set per map so big maps are walkable
   setObstacles(o: Obstacle[]) { this.obstacles = o }
+  setBound(b: number) { this.bound = b }
   setActive(v: boolean) { this.active = v; if (!v) this.wantFire = false }
   private blocked(x: number, z: number): boolean {
     for (const o of this.obstacles) {
@@ -61,11 +63,12 @@ export class HeroController {
     if (this.keys.has('KeyD')) move.addInPlace(right)
     if (this.keys.has('KeyA')) move.subtractInPlace(right)
     if (move.length() > 0) {
-      move.normalize().scaleInPlace(SPEED * dt)
+      const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? SPRINT_MULT : 1
+      move.normalize().scaleInPlace(SPEED * sprint * dt)
       // move per-axis so the hero slides along walls instead of sticking
-      const nx = Math.max(-BOUND, Math.min(BOUND, this.pos.x + move.x))
+      const nx = Math.max(-this.bound, Math.min(this.bound, this.pos.x + move.x))
       if (!this.blocked(nx, this.pos.z)) this.pos.x = nx
-      const nz = Math.max(-BOUND, Math.min(BOUND, this.pos.z + move.z))
+      const nz = Math.max(-this.bound, Math.min(this.bound, this.pos.z + move.z))
       if (!this.blocked(this.pos.x, nz)) this.pos.z = nz
     }
 
