@@ -7,7 +7,7 @@ export class BuildMenu {
   constructor(private onSelect: (k: TowerKind | null) => void, private costs: Record<TowerKind, number>) {}
   mount() {
     this.root = document.getElementById('buildmenu')!
-    const kinds: TowerKind[] = ['cannon', 'slow', 'sniper']
+    const kinds: TowerKind[] = ['cannon', 'slow', 'sniper', 'mortar', 'tesla']
     for (const k of kinds) {
       const b = document.createElement('button')
       b.innerHTML = `${k}<br><b style="color:#ffd24d">${this.costs[k]}</b>`

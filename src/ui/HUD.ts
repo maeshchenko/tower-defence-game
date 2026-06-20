@@ -5,8 +5,8 @@ import { EnemyKind } from '../enemies/EnemyTypes'
 
 const ACCENT = '#ffd24d'
 const PANEL = 'background:rgba(16,20,28,0.82);border:1px solid #2a3344;border-radius:8px;'
-const ENEMY_ICON: Record<EnemyKind, string> = { normal: '🪖', fast: '🏃', tank: '🛡️' }
-const ENEMY_LABEL: Record<EnemyKind, string> = { normal: 'обычные', fast: 'быстрые', tank: 'танки' }
+const ENEMY_ICON: Record<EnemyKind, string> = { normal: '🪖', fast: '🏃', tank: '🛡️', rogue: '🗡️', brute: '🪓', healer: '➕', boss: '💀' }
+const ENEMY_LABEL: Record<EnemyKind, string> = { normal: 'обычные', fast: 'быстрые', tank: 'танки', rogue: 'разбойники', brute: 'громилы', healer: 'лекари', boss: 'БОСС' }
 
 // HUD owns the stats card, the pause/speed bar and the next-wave preview. It reads
 // GameState/HeroState/Speed each frame; the speed buttons drive the Speed controller.

@@ -1,5 +1,5 @@
 import '@babylonjs/loaders/glTF'
-import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture, TrailMesh } from '@babylonjs/core'
+import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture, TrailMesh, LinesMesh } from '@babylonjs/core'
 import { Environment } from './rendering/Environment'
 import { loadPreset, savePreset, nextPreset, resolveQuality, QualityPreset } from './rendering/Quality'
 import { Screenshake } from './fx/Screenshake'
@@ -26,7 +26,7 @@ import { EnemyView } from './enemies/EnemyView'
 import { Enemy } from './enemies/Enemy'
 import { EnemyKind } from './enemies/EnemyTypes'
 import { TowerManager } from './towers/TowerManager'
-import { TowerView } from './towers/TowerView'
+import { TowerView, TowerViewHooks } from './towers/TowerView'
 import { Tower } from './towers/Tower'
 import { TowerKind, TOWER_DEFS } from './towers/TowerTypes'
 import { HUD } from './ui/HUD'
@@ -182,13 +182,16 @@ function syncHero() {
 }
 
 let selectedKind: TowerKind | null = null
-const buildMenu = new BuildMenu((k) => { selectedKind = k }, {
+const buildMenu = new BuildMenu((k) => { selectedKind = k; deselectTower() }, {
   cannon: TOWER_DEFS.cannon[0].cost, slow: TOWER_DEFS.slow[0].cost, sniper: TOWER_DEFS.sniper[0].cost,
+  mortar: TOWER_DEFS.mortar[0].cost, tesla: TOWER_DEFS.tesla[0].cost,
 }); buildMenu.mount()
 
 const views = new Map<Enemy, EnemyView>()
 const corpses: EnemyView[] = [] // dying enemies playing their death clip before disposal
 const towerViews = new Map<Tower, TowerView>()
+// shadow (de)registration for the tower mesh, which is swapped out on each upgrade
+const towerHooks: TowerViewHooks = { add: (n) => env.addShadowCaster(n), remove: (n) => env.removeShadowCaster(n) }
 let over = false
 let started = false // gates wave start until the player presses Play on the title screen
 
@@ -299,6 +302,7 @@ function loadMap(i: number) {
   clearHealthBars()
   for (const v of towerViews.values()) { env.removeShadowCaster(v.mesh); v.dispose() } towerViews.clear()
   for (const p of projectiles) killProjectile(p); projectiles.length = 0
+  for (const z of zaps) z.mesh.dispose(); zaps.length = 0
   for (const m of envMeshes) m.dispose(); envMeshes = []
   for (const n of envProps) { env.removeShadowCaster(n); n.dispose(false, true) } envProps = []
   mapIndex = i
@@ -326,6 +330,7 @@ enemyShotMat.emissiveColor = new Color3(1, 0.25, 0.2); enemyShotMat.diffuseColor
 
 const SHOT_FX: Record<TowerKind, Color3> = {
   cannon: new Color3(1, 0.8, 0.3), slow: new Color3(0.5, 0.8, 1), sniper: new Color3(1, 0.5, 0.4),
+  mortar: new Color3(1, 0.55, 0.2), tesla: new Color3(0.7, 0.5, 1),
 }
 const HERO_SHOT_COLOR = new Color3(0.6, 0.95, 1)
 const ENEMY_SHOT_COLOR = new Color3(1, 0.3, 0.25)
@@ -337,7 +342,7 @@ const SHAKE_AMP = 0.55 // peak camera targetScreenOffset; scaled down in third-p
 
 // a projectile homes onto a target enemy (tower shot, damage applied on arrival),
 // flies straight and hits enemies (hero shot), or flies straight at the hero (enemy shot).
-interface Projectile { mesh: TransformNode; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number; trail?: TrailMesh }
+interface Projectile { mesh: TransformNode; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number; trail?: TrailMesh; splashRadius?: number; chainCount?: number; chainRange?: number; arc?: { h: number; d0: number } }
 const projectiles: Projectile[] = []
 function killProjectile(p: Projectile) { p.trail?.dispose(); p.mesh.dispose(false, true) }
 const SHOT_SPEED = 18
@@ -360,17 +365,21 @@ function aimProjectile(node: TransformNode, dir: { x: number; y: number; z: numb
   if (TMP_AIM.lengthSquared() < 1e-8) return
   node.lookAt(node.position.add(TMP_AIM)) // lookAt aligns local +Z to the target
 }
-function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: TowerKind, damage: number, slow?: number) {
-  const key = kind === 'cannon' ? 'ammo.cannon' : kind === 'sniper' ? 'ammo.sniper' : 'ammo.slow'
-  const ball = spawnModelShot(key, from.x, 1.2, from.z)
+const AMMO_KEY: Record<TowerKind, string> = {
+  cannon: 'ammo.cannon', sniper: 'ammo.sniper', slow: 'ammo.slow', mortar: 'ammo.mortar', tesla: 'ammo.tesla',
+}
+function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: TowerKind, damage: number, slow?: number, splashRadius?: number, chainCount?: number, chainRange?: number, lob?: boolean) {
+  const ball = spawnModelShot(AMMO_KEY[kind], from.x, 1.2, from.z)
   aimProjectile(ball, { x: target.pos.x - from.x, y: 0.8 - 1.2, z: target.pos.z - from.z })
   burst(scene, 'muzzle', from.x, 1.4, from.z, SHOT_FX[kind]) // muzzle puff
   const trail = attachTrail(scene, ball, SHOT_FX[kind])
   sfx.shoot()
-  projectiles.push({ mesh: ball, target, ttl: 3, damage, slow, trail })
+  // mortar lobs: a parabolic arc instead of a flat homing shot
+  const arc = lob ? { h: Math.max(2, Math.min(5, Math.hypot(target.pos.x - from.x, target.pos.z - from.z) * 0.35)), d0: Math.max(0.5, Math.hypot(target.pos.x - from.x, target.pos.z - from.z)) } : undefined
+  projectiles.push({ mesh: ball, target, ttl: 3, damage, slow, trail, splashRadius, chainCount, chainRange, arc })
 }
 // actual body radius per enemy kind (capsule radius), for tight hit detection
-const ENEMY_RADIUS: Record<EnemyKind, number> = { normal: 0.4, fast: 0.3, tank: 0.7 }
+const ENEMY_RADIUS: Record<EnemyKind, number> = { normal: 0.4, fast: 0.3, tank: 0.7, rogue: 0.35, brute: 0.6, healer: 0.4, boss: 1.1 }
 const PROJ_HIT = 0.15 // projectile radius added to the target's radius
 function fireHeroShot(from: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, damage: number) {
   const ball = spawnModelShot('ammo.sniper', from.x, from.y, from.z)
@@ -414,8 +423,10 @@ function updateHealthBar(e: Enemy) {
   if (p.z < 0 || p.z > 1) { if (bar) bar.style.display = 'none'; return }
   const rect = canvas.getBoundingClientRect()
   if (!bar) {
+    const bw = e.kind === 'boss' ? 80 : e.kind === 'tank' || e.kind === 'brute' ? 48 : 34
+    const bh = e.kind === 'boss' ? 8 : 5
     bar = document.createElement('div')
-    bar.style.cssText = 'position:fixed;width:34px;height:5px;background:#300;border:1px solid #000;' +
+    bar.style.cssText = `position:fixed;width:${bw}px;height:${bh}px;background:#300;border:1px solid #000;` +
       'transform:translate(-50%,-50%);pointer-events:none;z-index:4'
     const fill = document.createElement('div'); fill.style.cssText = 'height:100%;width:100%;background:#3c3'
     bar.appendChild(fill); document.body.appendChild(bar); healthBars.set(e, bar)
@@ -431,40 +442,107 @@ function updateHealthBar(e: Enemy) {
 function removeHealthBar(e: Enemy) { const b = healthBars.get(e); if (b) { b.remove(); healthBars.delete(e) } }
 function clearHealthBars() { for (const b of healthBars.values()) b.remove(); healthBars.clear() }
 
-// damage is applied here, when a projectile reaches its target — not when fired
-function applyHit(target: Enemy, damage: number, slow?: number) {
-  if (!views.has(target)) return // already dead or leaked
+const HEAVY: Partial<Record<EnemyKind, boolean>> = { tank: true, brute: true, boss: true }
+// core damage to one enemy (no sfx) — used by the primary hit and by splash/chain
+function damageEnemy(target: Enemy, damage: number, slow?: number) {
+  if (!views.has(target)) return
   target.takeDamage(damage)
-  sfx.hit()
   floatText(target.pos.x, 1.7, target.pos.z, `-${damage} (${target.hp}/${target.maxHp})`, '#ffe27a')
-  burst(scene, 'impact', target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.55)) // impact spark
-  shake.addTrauma(0.08)
+  burst(scene, 'impact', target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.55))
+  shake.addTrauma(0.06)
   if (slow) target.applySlow(slow, 1.5)
   if (!target.alive) {
     state.addGold(target.bounty); bus.emit('enemyKilled', { bounty: target.bounty }); sfx.death()
     const v = views.get(target)!; views.delete(target); wm.remove(target); removeHealthBar(target)
-    env.removeShadowCaster(v.mesh) // stop casting as it dies (mesh disposes after the death clip)
-    // death FX: burst + trauma (heavier for a tank); hitstop only on a tank for weight
-    const tank = target.kind === 'tank'
+    env.removeShadowCaster(v.mesh)
+    const heavy = !!HEAVY[target.kind]
     burst(scene, 'death', target.pos.x, 1.0, target.pos.z, new Color3(1, 0.55, 0.3))
-    shake.addTrauma(tank ? 0.4 : 0.15)
-    if (tank) hitstop.trigger(70)
-    // play the death animation as a corpse, then self-remove from the list
+    shake.addTrauma(target.kind === 'boss' ? 0.7 : heavy ? 0.4 : 0.15)
+    if (heavy) hitstop.trigger(target.kind === 'boss' ? 110 : 70)
     corpses.push(v); v.die(() => { const i = corpses.indexOf(v); if (i >= 0) corpses.splice(i, 1) })
   }
 }
+// damage applied when a projectile reaches its target; mortar splashes, tesla chains
+function applyHit(target: Enemy, damage: number, slow?: number, aoe?: { splashRadius?: number; chainCount?: number; chainRange?: number }) {
+  if (!views.has(target)) return
+  sfx.hit()
+  const cx = target.pos.x, cz = target.pos.z
+  damageEnemy(target, damage, slow)
+  if (aoe?.splashRadius) { // mortar: full damage to everyone else in the blast
+    const r2 = aoe.splashRadius * aoe.splashRadius
+    burst(scene, 'death', cx, 0.8, cz, new Color3(1, 0.5, 0.2))
+    for (const e of [...views.keys()]) {
+      if (e === target) continue
+      const dx = e.pos.x - cx, dz = e.pos.z - cz
+      if (dx * dx + dz * dz <= r2) damageEnemy(e, damage)
+    }
+  }
+  if (aoe?.chainCount && aoe.chainRange) { // tesla: arc to the nearest few for 60% damage
+    const near = [...views.keys()]
+      .filter((e) => e !== target && e.alive)
+      .map((e) => ({ e, d: Math.hypot(e.pos.x - cx, e.pos.z - cz) }))
+      .filter((x) => x.d <= aoe.chainRange!)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, aoe.chainCount)
+    for (const { e } of near) { burst(scene, 'impact', e.pos.x, 1.0, e.pos.z, new Color3(0.7, 0.5, 1)); damageEnemy(e, Math.round(damage * 0.6)) }
+  }
+}
+// tesla chain lightning: jagged glowing line between two points, fades fast
+interface Zap { mesh: LinesMesh; age: number; ttl: number }
+const zaps: Zap[] = []
+function zap(a: { x: number; z: number }, b: { x: number; z: number }, color: Color3, y = 1.2) {
+  const steps = 6, pts: Vector3[] = []
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    const j = i > 0 && i < steps ? 0.55 : 0
+    pts.push(new Vector3(a.x + (b.x - a.x) * t + (Math.random() - 0.5) * j, y + (Math.random() - 0.5) * 0.5, a.z + (b.z - a.z) * t + (Math.random() - 0.5) * j))
+  }
+  const m = MeshBuilder.CreateLines('zap', { points: pts }, scene)
+  m.color = color; m.isPickable = false
+  zaps.push({ mesh: m, age: 0, ttl: 0.12 })
+}
+function updateZaps(dt: number) {
+  for (let i = zaps.length - 1; i >= 0; i--) {
+    const z = zaps[i]; z.age += dt
+    if (z.age >= z.ttl) { z.mesh.dispose(); zaps.splice(i, 1); continue }
+    z.mesh.alpha = 1 - z.age / z.ttl
+  }
+}
+// the nearest live enemies to `origin` within `range`, up to `count` (for tesla arcs)
+function chainTargets(origin: { x: number; z: number }, count: number, range: number, exclude: Enemy): Enemy[] {
+  return [...views.keys()]
+    .filter((e) => e !== exclude && e.alive)
+    .map((e) => ({ e, d: Math.hypot(e.pos.x - origin.x, e.pos.z - origin.z) }))
+    .filter((x) => x.d <= range)
+    .sort((a, b) => a.d - b.d)
+    .slice(0, count)
+    .map((x) => x.e)
+}
+
 function updateProjectiles(dt: number) {
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i]
     p.ttl -= dt
     if (p.ttl <= 0) { killProjectile(p); projectiles.splice(i, 1); continue }
     const step = (p.speed ?? SHOT_SPEED) * dt
-    if (p.target) {
+    if (p.target && p.arc) {
+      // mortar lob: home horizontally, height follows a parabola
+      const dx = p.target.pos.x - p.mesh.position.x, dz = p.target.pos.z - p.mesh.position.z
+      const horiz = Math.hypot(dx, dz)
+      if (horiz <= step) {
+        if (p.damage != null) applyHit(p.target, p.damage, p.slow, { splashRadius: p.splashRadius })
+        killProjectile(p); projectiles.splice(i, 1); continue
+      }
+      const nx = p.mesh.position.x + dx / horiz * step, nz = p.mesh.position.z + dz / horiz * step
+      const prog = Math.max(0, Math.min(1, 1 - horiz / p.arc.d0))
+      p.mesh.position.set(nx, 0.6 + p.arc.h * Math.sin(prog * Math.PI), nz)
+      p.mesh.rotation.x += dt * 6 // tumble the boulder
+    } else if (p.target) {
       const tgt = new Vector3(p.target.pos.x, 0.8, p.target.pos.z) // follow the moving target
       const dir = tgt.subtract(p.mesh.position)
       aimProjectile(p.mesh, dir) // keep the model's nose on the (moving) target
       if (dir.length() <= step) { // arrived — deal damage now
-        if (p.damage != null) applyHit(p.target, p.damage, p.slow)
+        if (p.damage != null) applyHit(p.target, p.damage, p.slow, { splashRadius: p.splashRadius, chainCount: p.chainCount, chainRange: p.chainRange })
         killProjectile(p); projectiles.splice(i, 1); continue
       }
       p.mesh.position.addInPlace(dir.normalize().scale(step))
@@ -615,7 +693,7 @@ scene.onPointerDown = (_evt, pick) => {
     if (!cell) { deselectTower(); return }
     if (cell.occupied) { flash('Клетка занята'); sfx.deny(); return }
     const t = tm.build(selectedKind, cell)
-    if (t) { const tv = new TowerView(scene, assets, t); env.addShadowCaster(tv.mesh); towerViews.set(t, tv); sfx.build() }
+    if (t) { towerViews.set(t, new TowerView(scene, assets, t, towerHooks)); sfx.build() }
     else { flash('Не хватает золота'); sfx.deny() }
     return
   }
@@ -631,6 +709,7 @@ scene.onBeforeRenderObservable.add(() => {
   heroState.tick(dt)
   heroCtrl.setActive(heroState.alive && !speed.paused) // dead OR paused -> no move/aim/shoot
   updateProjectiles(dt)
+  updateZaps(realDt)
   if (!over && state.phase === 'wave') {
     for (const e of wm.update(dt)) { const v = new EnemyView(scene, assets, e); env.addShadowCaster(v.mesh); views.set(e, v) }
     for (const e of [...wm.active]) {
@@ -640,10 +719,29 @@ scene.onBeforeRenderObservable.add(() => {
       updateHealthBar(e)
       const atk = e.attack(dt, heroCtrl.pos) // returns damage when in range + off cooldown
       if (atk != null && heroState.alive) fireEnemyShot(e.pos, heroCtrl.pos, atk)
+      const pulse = e.healPulse(dt) // healer: top up nearby wounded allies
+      if (pulse) for (const o of wm.active) {
+        if (o === e || !o.alive || o.hp >= o.maxHp) continue
+        if (Math.hypot(o.pos.x - e.pos.x, o.pos.z - e.pos.z) <= pulse.range) { o.heal(pulse.amount); floatText(o.pos.x, 1.9, o.pos.z, `+${pulse.amount}`, '#7dff7d') }
+      }
     }
     for (const shot of tm.update(dt, wm.active)) {
       const firing = [...towerViews.keys()].find((t) => t.pos === shot.from)
-      fireTowerShot(shot.from, shot.target, firing?.kind ?? 'cannon', shot.damage, shot.slow) // damage lands on arrival
+      const kind = firing?.kind ?? 'cannon'
+      if (kind === 'tesla') {
+        // instant chain lightning: bolt tower -> target -> nearest others
+        sfx.shoot()
+        zap(shot.from, shot.target.pos, SHOT_FX.tesla, 1.4)
+        damageEnemy(shot.target, shot.damage)
+        let prev = { x: shot.target.pos.x, z: shot.target.pos.z }
+        for (const e of chainTargets(shot.target.pos, shot.chainCount ?? 0, shot.chainRange ?? 0, shot.target)) {
+          zap(prev, e.pos, SHOT_FX.tesla, 1.2); damageEnemy(e, Math.round(shot.damage * 0.6)); prev = { x: e.pos.x, z: e.pos.z }
+        }
+      } else if (kind === 'mortar') {
+        fireTowerShot(shot.from, shot.target, kind, shot.damage, shot.slow, shot.splashRadius, undefined, undefined, true) // lobbed
+      } else {
+        fireTowerShot(shot.from, shot.target, kind, shot.damage, shot.slow, shot.splashRadius, shot.chainCount, shot.chainRange)
+      }
       if (firing) towerViews.get(firing)?.kickback() // recoil pulse
     }
     for (const [t, v] of towerViews) v.applyYaw(t.yaw) // rotate barrels toward their targets
