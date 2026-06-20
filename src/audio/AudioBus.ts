@@ -1,11 +1,14 @@
 // Central Web Audio mixer: one AudioContext, three gain buses (music + sfx -> master
 // -> speakers). Volumes persist to localStorage. The context is created lazily and
 // resumed on the first user gesture (autoplay policy). No asset files.
+import { buildMasterChain } from './limiter'
+
 export type Channel = 'master' | 'music' | 'sfx'
 
 interface Volumes { master: number; music: number; sfx: number; muted: boolean }
 const KEY = 'td.audio'
 const DEFAULTS: Volumes = { master: 0.8, music: 0.45, sfx: 0.8, muted: false }
+const MASTER_HEADROOM = 0.6 // leave ~4.4 dB before the limiter
 
 export class AudioBus {
   private ctx: AudioContext | null = null
@@ -13,6 +16,7 @@ export class AudioBus {
   private musicBus!: GainNode
   private sfxBus!: GainNode
   private vol: Volumes = { ...DEFAULTS }
+  private visBound = false
 
   constructor() { this.vol = this.load() }
 
@@ -25,12 +29,21 @@ export class AudioBus {
     this.sfxBus = this.ctx.createGain()
     this.musicBus.connect(this.master)
     this.sfxBus.connect(this.master)
-    this.master.connect(this.ctx.destination)
+    buildMasterChain(this.ctx, this.master).connect(this.ctx.destination)
     this.apply()
   }
 
   // resume audio from a user gesture (first click/keypress)
-  unlock(): void { this.init(); if (this.ctx!.state === 'suspended') void this.ctx!.resume() }
+  unlock(): void {
+    this.init()
+    if (this.ctx!.state === 'suspended') void this.ctx!.resume()
+    if (!this.visBound && typeof document !== 'undefined') {
+      this.visBound = true
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && this.ctx && this.ctx.state === 'suspended') void this.ctx.resume()
+      })
+    }
+  }
 
   get context(): AudioContext { this.init(); return this.ctx! }
   get sfxOut(): GainNode { this.init(); return this.sfxBus }
@@ -44,7 +57,7 @@ export class AudioBus {
   private apply(): void {
     if (!this.ctx) return
     const t = this.ctx.currentTime
-    this.master.gain.setTargetAtTime(this.vol.muted ? 0 : this.vol.master, t, 0.02)
+    this.master.gain.setTargetAtTime(this.vol.muted ? 0 : this.vol.master * MASTER_HEADROOM, t, 0.02)
     this.musicBus.gain.setTargetAtTime(this.vol.music, t, 0.02)
     this.sfxBus.gain.setTargetAtTime(this.vol.sfx, t, 0.02)
   }

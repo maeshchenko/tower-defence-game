@@ -40,4 +40,9 @@ describe('AudioBus', () => {
     const b = new AudioBus()
     expect(b.getVolume('master')).toBeCloseTo(0.8)
   })
+  it('exposes the nominal master volume unchanged by headroom', () => {
+    const b = new AudioBus()
+    // headroom is applied at the graph level, not to the stored/displayed volume
+    expect(b.getVolume('master')).toBeCloseTo(0.8)
+  })
 })
