@@ -54,16 +54,25 @@ export class Level {
     return new Level(path, cells)
   }
 
-  // the campaign's maps, in order
+  // the campaign's maps, in order. Map 1 is a simple teaching path; later maps grow
+  // longer and windier (more segments -> more build cells via fromPath).
   static maps(): Level[] {
     const y = 0
     return [
-      Level.demo(),
-      Level.fromPath([
-        { x: -14, y, z: -12 }, { x: 12, y, z: -12 }, { x: 12, y, z: 2 }, { x: -10, y, z: 2 }, { x: -10, y, z: 12 },
+      Level.demo(), // 1 — tutorial: short L
+      Level.fromPath([ // 2 — S-curve
+        { x: -15, y, z: -12 }, { x: 12, y, z: -12 }, { x: 12, y, z: 2 }, { x: -11, y, z: 2 }, { x: -11, y, z: 13 },
       ]),
-      Level.fromPath([
-        { x: -13, y, z: 12 }, { x: -13, y, z: -12 }, { x: 13, y, z: -12 }, { x: 13, y, z: 12 },
+      Level.fromPath([ // 3 — big U
+        { x: -14, y, z: 13 }, { x: -14, y, z: -13 }, { x: 14, y, z: -13 }, { x: 14, y, z: 13 },
+      ]),
+      Level.fromPath([ // 4 — zigzag
+        { x: -15, y, z: -14 }, { x: -15, y, z: 8 }, { x: -5, y, z: 8 }, { x: -5, y, z: -8 },
+        { x: 6, y, z: -8 }, { x: 6, y, z: 9 }, { x: 15, y, z: 9 }, { x: 15, y, z: 15 },
+      ]),
+      Level.fromPath([ // 5 — long snake
+        { x: -15, y, z: -15 }, { x: 10, y, z: -15 }, { x: 10, y, z: -5 }, { x: -10, y, z: -5 },
+        { x: -10, y, z: 5 }, { x: 11, y, z: 5 }, { x: 11, y, z: 15 },
       ]),
     ]
   }

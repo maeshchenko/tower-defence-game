@@ -48,15 +48,20 @@ export class WaveManager {
     return w
   }
 
-  // 10 waves per map, escalating within the map (i) and across maps (mapIndex)
+  // 10 waves per map, escalating within the map (i) and across maps (mapIndex).
+  // Enemy variety unlocks over the run; every map ends on a boss wave.
   static mapWaves(mapIndex: number): WaveEntry[][] {
-    const b = mapIndex * 4 // later maps start harder
+    const b = mapIndex * 3 // later maps start harder
     const w: WaveEntry[][] = []
     for (let i = 0; i < 10; i++) {
-      const groups: WaveEntry[] = [{ kind: 'normal', count: 4 + b + i * 2, interval: 0.8 }]
-      if (i >= 2) groups.push({ kind: 'fast', count: 2 + mapIndex + i, interval: 0.5 })
-      if (i >= 4) groups.push({ kind: 'tank', count: mapIndex + Math.floor(i / 2), interval: 1.5 })
-      w.push(groups)
+      const g: WaveEntry[] = [{ kind: 'normal', count: 4 + b + i * 2, interval: 0.8 }]
+      if (i >= 1) g.push({ kind: 'fast', count: 2 + mapIndex + i, interval: 0.5 })
+      if (i >= 2) g.push({ kind: 'rogue', count: 2 + i, interval: 0.4 })
+      if (i >= 4) g.push({ kind: 'brute', count: mapIndex + Math.floor(i / 3), interval: 1.2 })
+      if (i >= 5) g.push({ kind: 'tank', count: mapIndex + Math.floor((i - 3) / 2), interval: 1.5 })
+      if (i >= 6 && i < 9) g.push({ kind: 'healer', count: 1 + Math.floor((i - 6) / 2), interval: 2.0 })
+      if (i === 9) g.push({ kind: 'boss', count: mapIndex >= 3 ? 2 : 1, interval: 4.0 }) // finale
+      w.push(g)
     }
     return w
   }

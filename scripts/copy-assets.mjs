@@ -11,11 +11,12 @@ const OUT = join(root, 'public/models')
 // Kenney models grouped by destination folder (texture copied per folder once)
 const KENNEY_MODELS = {
   towers: [
-    'tower-square-bottom-a', 'tower-square-middle-a',
-    'tower-round-base', 'tower-round-middle-a', 'tower-round-roof-a', 'tower-round-crystals',
-    'weapon-cannon', 'weapon-ballista',
+    'tower-square-bottom-a', 'tower-square-middle-a', 'tower-square-middle-b', 'tower-square-middle-c',
+    'tower-round-base', 'tower-round-middle-a', 'tower-round-middle-b', 'tower-round-middle-c',
+    'tower-round-roof-a', 'tower-round-crystals',
+    'weapon-cannon', 'weapon-ballista', 'weapon-catapult', 'weapon-turret',
   ],
-  ammo: ['weapon-ammo-cannonball', 'weapon-ammo-arrow', 'weapon-ammo-bullet'],
+  ammo: ['weapon-ammo-cannonball', 'weapon-ammo-arrow', 'weapon-ammo-bullet', 'weapon-ammo-boulder'],
   props: ['detail-tree', 'detail-tree-large', 'detail-rocks', 'detail-rocks-large',
           'wood-structure', 'wood-structure-high', 'wood-structure-part'],
   tiles: ['tile', 'tile-straight', 'tile-corner-square', 'tile-spawn', 'tile-end'],

@@ -11,11 +11,12 @@ test('normalizeScale is safe for degenerate height', () => {
 })
 
 test('registry has every logical key the views request', () => {
+  const towerKeys = ['cannon', 'slow', 'sniper', 'mortar', 'tesla'].flatMap((k) => [0, 1, 2].map((l) => `tower.${k}.${l}`))
   for (const k of [
-    'tower.cannon', 'tower.slow', 'tower.sniper',
-    'enemy.normal', 'enemy.fast', 'enemy.tank',
+    ...towerKeys,
+    'enemy.normal', 'enemy.fast', 'enemy.tank', 'enemy.rogue', 'enemy.brute', 'enemy.healer', 'enemy.boss',
     'hero.knight',
-    'ammo.cannon', 'ammo.sniper', 'ammo.slow',
+    'ammo.cannon', 'ammo.sniper', 'ammo.slow', 'ammo.mortar', 'ammo.tesla',
     'prop.tree', 'prop.rock', 'prop.wall', 'prop.crate',
     'base.keep',
   ]) {

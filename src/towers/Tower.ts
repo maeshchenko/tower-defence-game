@@ -2,11 +2,14 @@ import { Vec3, dist } from '../core/Vec3'
 import { Enemy } from '../enemies/Enemy'
 import { TowerKind, TowerLevel, TOWER_DEFS } from './TowerTypes'
 
-export interface ShotResult { target: Enemy; damage: number; slow?: number; from: Vec3 }
+export interface ShotResult {
+  target: Enemy; damage: number; slow?: number; from: Vec3
+  splashRadius?: number; chainCount?: number; chainRange?: number
+}
 
 // how fast each tower kind swings its barrel toward a target (radians/sec) and how
 // close to on-target it must be before it may fire (radians)
-const TURN_SPEED: Record<TowerKind, number> = { cannon: 2.5, slow: 3.5, sniper: 1.4 }
+const TURN_SPEED: Record<TowerKind, number> = { cannon: 2.5, slow: 3.5, sniper: 1.4, mortar: 1.6, tesla: 4.0 }
 const ALIGN_THRESHOLD = 0.12
 
 // wrap an angle into [-PI, PI] so we always turn the short way around
@@ -44,6 +47,6 @@ export class Tower {
     if (this.cooldown > 0) return null
     if (Math.abs(normAngle(desired - this.yaw)) > ALIGN_THRESHOLD) return null
     this.cooldown = 1 / s.fireRate
-    return { target, damage: s.damage, slow: s.slow, from: this.pos }
+    return { target, damage: s.damage, slow: s.slow, from: this.pos, splashRadius: s.splashRadius, chainCount: s.chainCount, chainRange: s.chainRange }
   }
 }
