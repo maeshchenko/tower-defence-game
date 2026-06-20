@@ -13,12 +13,13 @@ export class CameraRig {
   readonly heroCam: ArcRotateCamera // third-person follow camera, orbits the hero
   private topTargetAlpha = PRESET_ALPHAS[0] // top cam eases toward this preset angle
   private introT = 0 // >0 while the establishing zoom-in plays
+  private settleRadius = 45 // top-cam resting zoom; set per map to frame its size
   constructor(private scene: Scene, private canvas: HTMLCanvasElement, heroStart: Vec3) {
     this.topCam = new ArcRotateCamera('top', PRESET_ALPHAS[0], ISO_BETA, 45, Vector3.Zero(), scene)
     this.topCam.attachControl(canvas, true)
     // lock tilt to the iso preset; no free orbit/pan — only wheel zoom remains
     this.topCam.lowerBetaLimit = ISO_BETA; this.topCam.upperBetaLimit = ISO_BETA
-    this.topCam.lowerRadiusLimit = 30; this.topCam.upperRadiusLimit = 58
+    this.topCam.lowerRadiusLimit = 24; this.topCam.upperRadiusLimit = 100
     // remove pointer rotate/pan + keyboard pan; keep the mouse-wheel zoom input
     this.topCam.inputs.removeByType('ArcRotateCameraPointersInput')
     this.topCam.inputs.removeByType('ArcRotateCameraKeyboardMoveInput')
@@ -77,15 +78,21 @@ export class CameraRig {
     this.topTargetAlpha = nextPresetAlpha(this.topTargetAlpha, dir)
   }
 
+  // frame the current map: set the resting zoom from the map's size (called on load)
+  setFrameRadius(r: number): void {
+    this.settleRadius = r
+    if (this.mode === 'top' && this.introT <= 0) this.topCam.radius = r
+  }
+
   // short establishing zoom-in when a map loads (camera settles from far to the play radius)
-  playIntro(): void { this.introT = 1.2; this.topCam.radius = 63 }
+  playIntro(): void { this.introT = 1.2; this.topCam.radius = this.settleRadius + 18 }
 
   // per-frame: ease the top camera toward its target preset angle (+ intro radius)
   update(dt: number): void {
     if (this.mode !== 'top') return
     if (this.introT > 0) {
       this.introT = Math.max(0, this.introT - dt)
-      this.topCam.radius = 45 + (this.introT / 1.2) * 18 // start far (63), settle to 45
+      this.topCam.radius = this.settleRadius + (this.introT / 1.2) * 18 // start far, settle to frame radius
     }
     this.topCam.alpha = easeAlpha(this.topCam.alpha, this.topTargetAlpha, dt)
   }

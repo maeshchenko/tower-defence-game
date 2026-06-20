@@ -26,10 +26,13 @@ describe('generateDecor', () => {
   })
   it('keeps props off the road and inside bounds', () => {
     const d = generateDecor(level, 1)
+    // decor fills to bound = mapExtent + 8 (scales per map size)
+    const ext = Math.max(...level.path.flatMap((p) => [Math.abs(p.x), Math.abs(p.z)]))
+    const bound = ext + 8
     for (const p of d.props) {
       expect(minDistToPath(p.x, p.z, level.path)).toBeGreaterThan(0.8)
-      expect(Math.abs(p.x)).toBeLessThanOrEqual(18)
-      expect(Math.abs(p.z)).toBeLessThanOrEqual(18)
+      expect(Math.abs(p.x)).toBeLessThanOrEqual(bound)
+      expect(Math.abs(p.z)).toBeLessThanOrEqual(bound)
     }
   })
 })

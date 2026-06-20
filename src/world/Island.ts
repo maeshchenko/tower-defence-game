@@ -17,7 +17,7 @@ export function buildIsland(scene: Scene): TransformNode {
   // grass apron: short hex prism whose top sits JUST BELOW y=0 so the play plane
   // and road tiles (y 0..0.08) render on top of it — otherwise it hides the road.
   const apron = MeshBuilder.CreateCylinder('islandApron',
-    { diameterTop: 62, diameterBottom: 58, height: 2.2, tessellation: 6 }, scene)
+    { diameterTop: 122, diameterBottom: 116, height: 2.2, tessellation: 6 }, scene)
   apron.material = grassSide
   apron.position.y = -1.25 // top at -0.15, under the ground plane
   apron.rotation.y = Math.PI / 6 // flat edge faces the default camera
@@ -26,7 +26,7 @@ export function buildIsland(scene: Scene): TransformNode {
 
   // rock body: tapers inward and down, giving the floating-island silhouette
   const body = MeshBuilder.CreateCylinder('islandRock',
-    { diameterTop: 58, diameterBottom: 30, height: 18, tessellation: 6 }, scene) as Mesh
+    { diameterTop: 116, diameterBottom: 60, height: 18, tessellation: 6 }, scene) as Mesh
   body.material = rock
   body.position.y = -11
   body.rotation.y = Math.PI / 6
@@ -36,9 +36,9 @@ export function buildIsland(scene: Scene): TransformNode {
   // a few chunky boulders hanging off the underside for toon silhouette
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2
-    const r = MeshBuilder.CreateIcoSphere(`islandChunk${i}`, { radius: 2 + (i % 3), subdivisions: 1 }, scene)
+    const r = MeshBuilder.CreateIcoSphere(`islandChunk${i}`, { radius: 4 + (i % 3) * 2, subdivisions: 1 }, scene)
     r.material = rock
-    r.position = new Vector3(Math.cos(a) * 22, -16 - (i % 3) * 2, Math.sin(a) * 22)
+    r.position = new Vector3(Math.cos(a) * 46, -16 - (i % 3) * 2, Math.sin(a) * 46)
     r.isPickable = false
     r.parent = root
   }

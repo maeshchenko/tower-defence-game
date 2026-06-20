@@ -13,7 +13,7 @@ import { Level } from '../world/Level'
 import { TowerKind } from '../towers/TowerTypes'
 import { EnemyKind } from '../enemies/EnemyTypes'
 import { WaveManager } from '../enemies/WaveManager'
-import { SIM_TOWERS, SIM_ENEMIES, SIM_ECONOMY, SIM_BASE, SIM_HERO, SimTowerLevel } from './config'
+import { SIM_TOWERS, SIM_ENEMIES, SIM_ECONOMY, SIM_BASE, SIM_HERO, SIM_HP_SCALE, SimTowerLevel } from './config'
 
 // ---- pure helpers (unit-tested) -------------------------------------------
 
@@ -59,10 +59,10 @@ class SimEnemy {
   private slowFactor = 1; private slowTimer = 0
   private heal?: { amount: number; range: number; rate: number }
   private healCd = 0
-  constructor(kind: EnemyKind, path: Vec3[]) {
+  constructor(kind: EnemyKind, path: Vec3[], hpScale = 1) {
     const d = SIM_ENEMIES[kind]
     this.f = new PathFollower(path, d.speed)
-    this.hp = d.hp; this.maxHp = d.hp; this.armor = d.armor
+    this.hp = Math.round(d.hp * hpScale); this.maxHp = this.hp; this.armor = d.armor
     this.bounty = d.bounty; this.leak = d.leak; this.kind = kind
     this.heal = d.heal; this.healCd = d.heal ? 1 / d.heal.rate : 0
   }
@@ -145,7 +145,7 @@ function fireBase(cooldownRef: { c: number }, base: Vec3, dt: number, enemies: S
 export interface WaveResult { leaks: number; livesLost: number; bountyEarned: number; kills: number; durationS: number }
 
 /** run a single wave to completion; mutates lives via return. dt fixed step. */
-export function runWave(path: Vec3[], towers: SimTower[], wave: { kind: EnemyKind; count: number; interval: number }[], dt = 0.05, hero = false): WaveResult {
+export function runWave(path: Vec3[], towers: SimTower[], wave: { kind: EnemyKind; count: number; interval: number }[], dt = 0.05, hero = false, hpScale = 1): WaveResult {
   // build spawn schedule
   const queue = wave.map((g) => ({ kind: g.kind, interval: g.interval, remaining: g.count, timer: 0 }))
   const enemies: SimEnemy[] = []
@@ -161,7 +161,7 @@ export function runWave(path: Vec3[], towers: SimTower[], wave: { kind: EnemyKin
     // spawn
     for (const g of queue) {
       g.timer -= dt
-      while (g.remaining > 0 && g.timer <= 0) { enemies.push(new SimEnemy(g.kind, path)); g.remaining -= 1; g.timer += g.interval }
+      while (g.remaining > 0 && g.timer <= 0) { enemies.push(new SimEnemy(g.kind, path, hpScale)); g.remaining -= 1; g.timer += g.interval }
     }
     // healers
     for (const h of enemies) {
@@ -234,44 +234,60 @@ export function monoStrategy(kind: TowerKind): Strategy {
   return (ctx) => { let guard = 50; while (guard-- > 0) { if (place(ctx, kind)) continue; if (upgradeBest(ctx)) continue; break } }
 }
 
-/** skilled play: cover armor (sniper), swarm (tesla+mortar), a slow, rest cannons; then upgrade. */
+/** skilled play: cover the key counters (sniper/tesla/mortar/slow), then fill the
+ *  rest of the pads with cannons and sink every remaining coin into upgrades —
+ *  a real player spends down to ~0 each build phase, so goldLeftover reflects
+ *  true affordability (tight gold = can't cover everything = strategy). */
 export const mixedStrategy: Strategy = (ctx) => {
   const has = (k: TowerKind) => ctx.towers.some((t) => t.kind === k)
-  let guard = 60
+  let guard = 300
   while (guard-- > 0) {
     if (!has('sniper') && place(ctx, 'sniper')) continue
     if (!has('tesla') && place(ctx, 'tesla')) continue
     if (!has('mortar') && place(ctx, 'mortar')) continue
     if (!has('slow') && place(ctx, 'slow')) continue
-    // alternate: upgrade something cheap, else add a cannon
-    if (ctx.gold > 120 && upgradeBest(ctx)) continue
-    if (place(ctx, 'cannon')) continue
-    if (upgradeBest(ctx)) continue
-    break
+    if (place(ctx, 'cannon')) continue // fill empty pads with cheap DPS
+    if (upgradeBest(ctx)) continue      // then drain gold into upgrades
+    break                               // nothing affordable -> stop
   }
 }
 
 // ---- full map run -----------------------------------------------------------
 
-export interface MapRun { mapIndex: number; strategy: string; won: boolean; livesLeft: number; waves: { wave: number; livesLost: number; goldAfter: number }[] }
+export interface MapRun { mapIndex: number; strategy: string; won: boolean; livesLeft: number; goldLeft: number; waves: { wave: number; livesLost: number; goldAfter: number }[] }
 
+// no carry-over: each map starts with its own fresh, tight gold + full lives.
 export function runMap(mapIndex: number, level: Level, strategyName: string, strategy: Strategy, hero = false): MapRun {
   const waves = WaveManager.mapWaves(mapIndex)
   const samples = pathSamples(level.path)
   const cells = level.cells.map((c) => ({ pos: c.pos, occupied: false } as BuildCtx['cells'][number]))
   const towers: SimTower[] = []
-  let gold = SIM_ECONOMY.startGold, lives = SIM_ECONOMY.startLives
+  let gold = SIM_ECONOMY.startGold(mapIndex), lives = SIM_ECONOMY.startLives
   const log: MapRun['waves'] = []
   for (let i = 0; i < waves.length; i++) {
     // build phase
     const ctx: BuildCtx = { get gold() { return gold }, cells, towers, samples, spend: (n) => { if (n > gold) return false; gold -= n; return true } }
     strategy(ctx)
     // run wave
-    const res = runWave(level.path, towers, waves[i].map((g) => ({ kind: g.kind, count: g.count, interval: g.interval })), 0.05, hero)
+    const res = runWave(level.path, towers, waves[i].map((g) => ({ kind: g.kind, count: g.count, interval: g.interval })), 0.05, hero, SIM_HP_SCALE(mapIndex))
     gold += res.bountyEarned + SIM_ECONOMY.waveClear(i + 1)
     lives -= res.livesLost
     log.push({ wave: i + 1, livesLost: res.livesLost, goldAfter: gold })
-    if (lives <= 0) return { mapIndex, strategy: strategyName, won: false, livesLeft: 0, waves: log }
+    if (lives <= 0) return { mapIndex, strategy: strategyName, won: false, livesLeft: 0, goldLeft: gold, waves: log }
   }
-  return { mapIndex, strategy: strategyName, won: true, livesLeft: lives, waves: log }
+  return { mapIndex, strategy: strategyName, won: true, livesLeft: lives, goldLeft: gold, waves: log }
+}
+
+// campaign view: each map is independent (fresh gold + lives — no carry). Reports
+// per-map win/lives so the whole 10-map difficulty curve is visible at once.
+export interface CampaignRun { wonMaps: number; perMap: { map: number; won: boolean; livesLeft: number; goldLeft: number }[] }
+export function runCampaign(maps: Level[], strategy: Strategy, hero = false): CampaignRun {
+  const perMap: CampaignRun['perMap'] = []
+  let wonMaps = 0
+  for (let m = 0; m < maps.length; m++) {
+    const r = runMap(m, maps[m], 'campaign', strategy, hero)
+    if (r.won) wonMaps++
+    perMap.push({ map: m + 1, won: r.won, livesLeft: r.livesLeft, goldLeft: r.goldLeft })
+  }
+  return { wonMaps, perMap }
 }

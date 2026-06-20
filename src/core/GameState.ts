@@ -32,6 +32,9 @@ export class GameState {
     if (this._wave >= this.totalWaves) { this._phase = 'gameover'; this.bus.emit('gameOver', { victory: true }) }
     else this._phase = 'build'
   }
-  // advance to the next map: reset wave count and resume building; gold and lives carry over
+  // advance to the next map: reset wave count and resume building
   nextMap() { this._wave = 0; this._phase = 'build' }
+  // start a map with a fresh gold + lives budget (NO carry-over — gold must stay
+  // tight so every map is its own economic puzzle and gold never snowballs).
+  beginMap(gold: number, lives: number) { this._gold = gold; this._lives = lives; this._wave = 0; this._phase = 'build' }
 }

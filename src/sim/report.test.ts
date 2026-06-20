@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest'
 import { Level } from '../world/Level'
 import { TowerKind } from '../towers/TowerTypes'
 import { SIM_TOWERS } from './config'
-import { singleDps, runMap, monoStrategy, mixedStrategy, MapRun, Strategy } from './balance'
+import { singleDps, runMap, runCampaign, monoStrategy, mixedStrategy, MapRun, Strategy } from './balance'
 
 const noBuild: Strategy = () => {} // build nothing — used for the hero-alone probe
 
@@ -14,7 +14,7 @@ const KINDS: TowerKind[] = ['cannon', 'sniper', 'tesla', 'mortar', 'slow']
 function cumCost(k: TowerKind): number { return SIM_TOWERS[k].reduce((s, l) => s + l.cost, 0) }
 
 describe('balance report', () => {
-  it('prints dominance table + map outcomes (informational asserts)', { timeout: 30000 }, () => {
+  it('prints dominance table + map outcomes (informational asserts)', { timeout: 180000 }, () => {
     // ---- dominance table ----
     const rows = KINDS.map((k) => {
       const L3 = SIM_TOWERS[k][SIM_TOWERS[k].length - 1]
@@ -38,6 +38,7 @@ describe('balance report', () => {
 
     // ---- map outcomes ----
     const maps = Level.maps()
+    console.log('\n=== CELLS PER MAP ===\n' + maps.map((mp, i) => `map ${i + 1}: ${mp.cells.length} cells`).join('\n'))
     const runs: MapRun[] = []
     for (let m = 0; m < maps.length; m++) {
       for (const k of KINDS) runs.push(runMap(m, maps[m], `mono-${k}`, monoStrategy(k)))
@@ -70,5 +71,12 @@ describe('balance report', () => {
     }
     hero += `HERO-ALONE won ${heroWins}/${maps.length} maps (if high -> hero is too strong / makes towers optional).\n`
     console.log(hero)
+
+    // ---- CAMPAIGN: each map independent (fresh tight gold + lives, no carry) ----
+    const camp = runCampaign(maps, mixedStrategy)
+    let cl = '\n=== CAMPAIGN (mixed, per-map fresh gold+lives) — target: WON but lose lives ===\n'
+    for (const p of camp.perMap) cl += `map ${p.map}: ${p.won ? 'WON ' : 'LOST'}  lives=${p.livesLeft}/20  goldLeftover=${p.goldLeft}\n`
+    cl += `WON ${camp.wonMaps}/${maps.length} maps. (lives<20 = tension; LOST = too hard; lives=20 & big goldLeftover = too easy)\n`
+    console.log(cl)
   })
 })

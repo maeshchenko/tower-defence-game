@@ -20,8 +20,8 @@ export class Enemy {
   private healDef?: { amount: number; range: number; rate: number }
   private healCd = Infinity
   private healInterval = Infinity
-  constructor(def: EnemyDef, path: Vec3[]) {
-    this.hp = def.hp; this.maxHp = def.hp; this.bounty = def.bounty; this.kind = def.kind
+  constructor(def: EnemyDef, path: Vec3[], hpScale = 1) {
+    this.hp = Math.round(def.hp * hpScale); this.maxHp = this.hp; this.bounty = def.bounty; this.kind = def.kind
     this.armor = def.armor; this.leak = def.leak
     this.atk = def.atk; this.atkRange = def.atkRange
     this.atkInterval = 1 / def.atkRate; this.atkCd = this.atkInterval

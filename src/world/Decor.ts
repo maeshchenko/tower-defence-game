@@ -38,7 +38,6 @@ function distToPath(x: number, z: number, path: Vec3[]): number {
   return min
 }
 
-const BOUND = 18
 // per-kind: how many to place, footprint range, and how far it must clear the road
 const PLAN: { kind: PropKind; count: number; min: number; max: number; clear: number }[] = [
   { kind: 'wall', count: 5, min: 3, max: 6, clear: 3.0 },
@@ -58,11 +57,18 @@ export function generateDecor(level: Level, seed: number): Decor {
   const obstacles: Obstacle[] = []
   const placed: { x: number; z: number; r: number }[] = []
 
+  // fill decor across THIS map: bound tracks the map extent (so big ±30 maps
+  // aren't bare at the edges), and counts scale with area so density stays even.
+  const ext = Math.max(...level.path.flatMap((p) => [Math.abs(p.x), Math.abs(p.z)]))
+  const bound = ext + 8
+  const countScale = Math.max(1, Math.min(3.2, (bound / 18) ** 2))
+
   for (const spec of PLAN) {
-    for (let n = 0; n < spec.count; n++) {
+    const count = Math.round(spec.count * countScale)
+    for (let n = 0; n < count; n++) {
       for (let tries = 0; tries < 30; tries++) {
-        const x = (rand() * 2 - 1) * BOUND
-        const z = (rand() * 2 - 1) * BOUND
+        const x = (rand() * 2 - 1) * bound
+        const z = (rand() * 2 - 1) * bound
         const size = spec.min + rand() * (spec.max - spec.min)
         const long = spec.kind === 'wall' ? size : size * (0.7 + rand() * 0.6)
         const w = spec.kind === 'wall' ? 0.6 : size

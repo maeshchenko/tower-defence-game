@@ -89,17 +89,16 @@ function makeGrassTexture(): DynamicTexture {
   return tex
 }
 
-const ground = MeshBuilder.CreateGround('ground', { width: 40, height: 40 }, scene)
+const ground = MeshBuilder.CreateGround('ground', { width: 80, height: 80 }, scene)
 const gm = new StandardMaterial('g', scene)
 gm.diffuseTexture = makeGrassTexture()
 gm.specularColor = new Color3(0, 0, 0) // matte: no plastic glare under the sun
 ground.material = gm; ground.checkCollisions = true; ground.receiveShadows = true
 
-// perimeter walls (invisible) so hero can't leave
-for (const [x,z,w,d] of [[0,20,40,1],[0,-20,40,1],[20,0,1,40],[-20,0,1,40]] as const) {
-  const wall = MeshBuilder.CreateBox('wall', { width: w, height: 4, depth: d }, scene)
-  wall.position.set(x, 2, z); wall.checkCollisions = true; wall.isVisible = false
-}
+// per-map play boundary (invisible containment walls + visual cliff-lip rim),
+// rebuilt to each map's size in rebuildBoundary() — see below.
+let boundaryWalls: Mesh[] = []
+let rimRocks: TransformNode[] = []
 
 // stylized-toon render env (sun, soft shadows, glow, post-fx, fog) — quality-gated
 let quality: QualityPreset = loadPreset()
@@ -123,7 +122,7 @@ function buildAmbientMotes() {
   const ps = new ParticleSystem('motes', 120, scene)
   ps.particleTexture = tex
   ps.emitter = new Vector3(0, 4, 0)
-  ps.minEmitBox = new Vector3(-20, 0, -20); ps.maxEmitBox = new Vector3(20, 8, 20)
+  ps.minEmitBox = new Vector3(-35, 0, -35); ps.maxEmitBox = new Vector3(35, 8, 35)
   ps.color1 = new Color4(1, 1, 0.85, 0.12); ps.color2 = new Color4(1, 1, 1, 0.07)
   ps.colorDead = new Color4(1, 1, 1, 0)
   ps.minSize = 0.04; ps.maxSize = 0.1
@@ -135,21 +134,29 @@ function buildAmbientMotes() {
 }
 buildAmbientMotes()
 
-// visual rim along the play boundary so third-person doesn't show a bare slab edge:
-// scattered rocks give the hero a believable cliff lip, not a cut table edge. Static
-// (shared across maps) — built once in boot(), never torn down in loadMap.
-function buildRim() {
-  const B = 19.5 // just inside the 20-unit invisible walls
-  const step = 3
-  for (let t = -B; t <= B; t += step) {
-    for (const [x, z] of [[t, B], [t, -B], [B, t], [-B, t]] as const) {
+// rebuild the play boundary for a map of half-extent `half`: invisible containment
+// walls at the edge (hero can't leave) + scattered cliff-lip rocks just inside, so
+// third-person never shows a bare slab edge. Sized per map so big maps are fully
+// walkable and small maps aren't ringed far out in empty grass.
+function rebuildBoundary(half: number) {
+  for (const w of boundaryWalls) w.dispose(); boundaryWalls = []
+  for (const r of rimRocks) { env.removeShadowCaster(r); r.dispose(false, true) } rimRocks = []
+  const t = 1
+  for (const [x, z, w, d] of [[0, half, 2 * half, t], [0, -half, 2 * half, t], [half, 0, t, 2 * half], [-half, 0, t, 2 * half]] as const) {
+    const wall = MeshBuilder.CreateBox('wall', { width: w, height: 4, depth: d }, scene)
+    wall.position.set(x, 2, z); wall.checkCollisions = true; wall.isVisible = false
+    boundaryWalls.push(wall)
+  }
+  const B = half - 0.5, step = 3
+  for (let p = -B; p <= B; p += step) {
+    for (const [x, z] of [[p, B], [p, -B], [B, p], [-B, p]] as const) {
       const rock = assets.instance('prop.rock')
       rock.position.set(x, -0.2, z)
       rock.rotation.y = x + z // pseudo-varied yaw
       const s = rock.scaling.x * (0.7 + (Math.abs(x * 7 + z * 3) % 5) / 8)
       rock.scaling.set(s, s, s)
       rock.getChildMeshes().forEach((m) => (m.isPickable = false))
-      env.addShadowCaster(rock)
+      env.addShadowCaster(rock); rimRocks.push(rock)
     }
   }
 }
@@ -375,6 +382,10 @@ function buildProp(p: Prop) {
 }
 
 // tear down the current map and load map i (gold/lives carry over via shared GameState)
+// per-map fresh budget (no carry-over). Tight gold + many cells = strategy: you
+// can't fill/max every pad, so you choose what to build, where, and what to upgrade.
+const START_LIVES = 20
+const MAP_START_GOLD = (i: number) => 120 + i * 15 // map1 120 ... map10 255
 function loadMap(i: number) {
   deselectTower(); hoveredView = null; updateBuildPreview(null) // clear UI selection from the old map
   for (const v of views.values()) { env.removeShadowCaster(v.mesh); v.dispose() } views.clear()
@@ -387,11 +398,23 @@ function loadMap(i: number) {
   for (const n of envProps) { env.removeShadowCaster(n); n.dispose(false, true) } envProps = []
   mapIndex = i
   level = MAPS[i]
-  wm = new WaveManager(level.path, WaveManager.mapWaves(i))
+  state.beginMap(MAP_START_GOLD(i), START_LIVES) // fresh gold + lives each map (no carry-over)
+  wm = new WaveManager(level.path, WaveManager.mapWaves(i), 1 + i * 0.06) // per-map HP ramp (sim-tuned, see SIM_HP_SCALE)
   tm = new TowerManager(state, level)
   buildEnvironment()
   heroCtrl.pos = { x: level.base.x, y: 0, z: level.base.z - 3 }
   syncHero()
+  // frame the camera to this map's size (small maps zoom in, big ±30 maps zoom out)
+  const ext = Math.max(...level.path.flatMap((p) => [Math.abs(p.x), Math.abs(p.z)]))
+  rig.setFrameRadius(Math.max(42, Math.min(95, ext * 2.8)))
+  // size the world to THIS map: ground + island + boundary walls + rim all track
+  // the map's extent, so small maps don't float on a giant island and big maps are
+  // fully walkable (no walls cutting through the middle).
+  const half = Math.max(21, ext + 6)
+  const worldScale = half / 40 // base ground is 80 (half 40); island built to match
+  ground.scaling.set(worldScale, 1, worldScale)
+  island.scaling.set(worldScale, 1, worldScale)
+  rebuildBoundary(half)
   rig.playIntro() // short establishing zoom-in on each map load
   selectedKind = null
   awaitStart = true; nextWaveTimer = 0 // first wave of this map waits for Enter
@@ -870,7 +893,7 @@ scene.onBeforeRenderObservable.add(() => {
     }
     processHeroShot(heroCtrl.update(dt))
     if (wm.cleared()) {
-      state.addGold(15 + state.wave * 3); state.endWave()
+      state.addGold(12 + state.wave * 2); state.endWave()
       const phaseAfter: string = state.phase
       if (phaseAfter === 'build') { nextWaveTimer = 5; music.setState('calm') } // breather before next wave
     }
@@ -963,7 +986,6 @@ async function boot() {
   overlay.remove()
   makeHero()
   loadMap(0)
-  buildRim() // static cliff-lip rocks around the play boundary (after assets preloaded)
   engine.runRenderLoop(() => scene.render())
   addEventListener('resize', () => engine.resize())
   buildMenu.setVisible(true)

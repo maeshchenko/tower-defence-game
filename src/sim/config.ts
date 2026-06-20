@@ -59,10 +59,15 @@ export const SIM_ENEMIES: Record<EnemyKind, SimEnemyDef> = {
   boss: { kind: 'boss', hp: 2600, speed: 0.9, bounty: 140, leak: 8, armor: 6 },
 }
 
+// per-map enemy HP multiplier: difficulty ramps over the campaign so each map
+// matches its cell count (early maps easy/tutorial, late maps hard) — lets us keep
+// MANY build cells without the late maps being trivial.
+export const SIM_HP_SCALE = (mapIndex: number) => 1 + mapIndex * 0.06 // map1 x1.0 ... map10 x1.54
+
 export const SIM_ECONOMY = {
-  startGold: 100,
+  startGold: (mapIndex: number) => 120 + mapIndex * 15, // per-map fresh budget (no carry)
   startLives: 20,
-  waveClear: (wave: number) => 15 + wave * 3, // wave is 1-based
+  waveClear: (wave: number) => 12 + wave * 2, // wave is 1-based
   earlyStartBonusIgnored: true,               // sim never starts early
 }
 
