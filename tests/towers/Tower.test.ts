@@ -51,11 +51,11 @@ describe('Tower', () => {
     for (let i = 0; i < 120 && !shot; i++) shot = t.update(1/60, [behind])
     expect(shot).not.toBeNull()
   })
-  it('slow tower reports slow factor', () => {
+  it('slow tower reports an aura slow factor', () => {
     const t = new Tower('slow', {x:0,y:0,z:0})
     const e = at(1)
     const shot = t.update(10, [e])
-    expect(shot?.slow).toBeGreaterThan(0)
-    expect(shot?.slow).toBeLessThan(1)
+    expect(shot?.aura?.slow).toBeGreaterThan(0)
+    expect(shot?.aura?.slow).toBeLessThan(1)
   })
 })

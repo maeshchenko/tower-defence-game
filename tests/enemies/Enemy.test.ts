@@ -7,7 +7,7 @@ const path = [{x:0,y:0,z:0},{x:10,y:0,z:0}]
 describe('Enemy', () => {
   it('starts alive at spawn with def hp', () => {
     const e = new Enemy(ENEMY_DEFS.normal, path)
-    expect(e.alive).toBe(true); expect(e.hp).toBe(30); expect(e.pos.x).toBe(0)
+    expect(e.alive).toBe(true); expect(e.hp).toBe(45); expect(e.pos.x).toBe(0)
   })
   it('moves along path on update', () => {
     const e = new Enemy(ENEMY_DEFS.normal, path)
@@ -21,7 +21,7 @@ describe('Enemy', () => {
   })
   it('dies when hp depleted', () => {
     const e = new Enemy(ENEMY_DEFS.normal, path)
-    e.takeDamage(30)
+    e.takeDamage(45)
     expect(e.hp).toBe(0); expect(e.alive).toBe(false)
   })
   it('applySlow reduces effective speed temporarily', () => {
@@ -33,7 +33,7 @@ describe('Enemy', () => {
     expect(e.pos.x).toBeCloseTo(3)
   })
   it('exposes maxHp from its def', () => {
-    expect(new Enemy(ENEMY_DEFS.normal, path).maxHp).toBe(30)
+    expect(new Enemy(ENEMY_DEFS.normal, path).maxHp).toBe(45)
   })
   it('attacks hero only when in range and off cooldown', () => {
     const e = new Enemy(ENEMY_DEFS.normal, [{x:0,y:0,z:0},{x:100,y:0,z:0}]) // range 7, atk 5, rate 0.5 -> interval 2

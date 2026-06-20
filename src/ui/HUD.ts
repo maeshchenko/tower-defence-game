@@ -17,6 +17,7 @@ export class HUD {
   private speedBar!: HTMLDivElement
   private preview!: HTMLDivElement
   private pauseTag!: HTMLDivElement
+  private buildBanner!: HTMLDivElement
   private speedBtns: Record<string, HTMLButtonElement> = {}
 
   constructor(private state: GameState, private hero: HeroState, private speed: Speed) {}
@@ -61,9 +62,21 @@ export class HUD {
       `font-family:monospace;font-size:40px;font-weight:bold;color:${ACCENT};text-shadow:0 0 16px #000;` +
       'z-index:6;display:none;pointer-events:none;letter-spacing:3px'
     document.body.appendChild(this.pauseTag)
+
+    // build-mode banner (top center, below the wave preview)
+    this.buildBanner = document.createElement('div')
+    this.buildBanner.style.cssText = 'position:fixed;top:104px;left:50%;transform:translateX(-50%);' +
+      'font-family:monospace;font-size:14px;color:#cfe;z-index:6;display:none;' + PANEL + 'padding:7px 14px;text-align:center'
+    document.body.appendChild(this.buildBanner)
   }
 
   setCrosshair(v: boolean) { this.cross.style.display = v ? 'block' : 'none' }
+
+  setBuildBanner(text: string | null) {
+    if (!text) { this.buildBanner.style.display = 'none'; return }
+    this.buildBanner.style.display = 'block'
+    this.buildBanner.innerHTML = text
+  }
 
   // a coloured HP bar fragment
   private bar(frac: number, color: string): string {

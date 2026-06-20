@@ -1,5 +1,5 @@
 import '@babylonjs/loaders/glTF'
-import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, Color4, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture, TrailMesh, LinesMesh, ParticleSystem } from '@babylonjs/core'
+import { Engine, Scene, HemisphericLight, MeshBuilder, Vector3, Color3, Color4, StandardMaterial, Mesh, Matrix, TransformNode, DynamicTexture, Texture, TrailMesh, LinesMesh, ParticleSystem, PointerEventTypes } from '@babylonjs/core'
 import { Environment } from './rendering/Environment'
 import { loadPreset, savePreset, resolveQuality, QualityPreset } from './rendering/Quality'
 import { Screenshake } from './fx/Screenshake'
@@ -165,6 +165,19 @@ const mat = (name: string, r: number, g: number, b: number) => { const m = new S
 const padMat = new StandardMaterial('padmat', scene)
 padMat.diffuseColor = new Color3(0.32, 0.58, 0.9); padMat.emissiveColor = new Color3(0.12, 0.28, 0.5)
 padMat.alpha = 0.6; padMat.specularColor = new Color3(0, 0, 0)
+// brighter pad shown while a build kind is armed — signals "place here"
+const padMatArmed = new StandardMaterial('padmatArmed', scene)
+padMatArmed.diffuseColor = new Color3(0.5, 0.85, 1); padMatArmed.emissiveColor = new Color3(0.35, 0.7, 1)
+padMatArmed.alpha = 0.85; padMatArmed.specularColor = new Color3(0, 0, 0)
+const pads = new Map<string, Mesh>() // cell id -> its pad mesh (rebuilt per map)
+function updatePadVisuals() {
+  const armed = buildMenu.armed != null
+  for (const c of level.cells) {
+    const m = pads.get(c.id); if (!m) continue
+    m.setEnabled(!c.occupied)                 // hide a pad once a tower occupies it
+    m.material = armed ? padMatArmed : padMat // brighten every free pad while arming
+  }
+}
 
 let mapIndex = 0
 let level!: Level
@@ -232,10 +245,17 @@ function syncHero() {
 }
 
 let selectedKind: TowerKind | null = null
-const buildMenu = new BuildMenu((k) => { selectedKind = k; deselectTower() }, {
+const BUILD_COSTS: Record<TowerKind, number> = {
   cannon: TOWER_DEFS.cannon[0].cost, slow: TOWER_DEFS.slow[0].cost, sniper: TOWER_DEFS.sniper[0].cost,
   mortar: TOWER_DEFS.mortar[0].cost, tesla: TOWER_DEFS.tesla[0].cost,
-}); buildMenu.mount()
+}
+const buildMenu = new BuildMenu((k) => { selectedKind = k; deselectTower(); updatePadVisuals(); refreshBuildBanner() }, BUILD_COSTS)
+buildMenu.mount()
+// banner that names the armed tower + how to place/cancel; null hides it
+function refreshBuildBanner() {
+  const k = buildMenu.armed
+  hud.setBuildBanner(k ? `СТРОИМ: ${k.toUpperCase()} (${BUILD_COSTS[k]}з) · клик по клетке · ПКМ/Esc отмена · Shift — подряд` : null)
+}
 
 const views = new Map<Enemy, EnemyView>()
 const corpses: EnemyView[] = [] // dying enemies playing their death clip before disposal
@@ -298,12 +318,13 @@ function buildEnvironment() {
   placeTile('tile.spawn', level.spawn.x, level.spawn.z) // mark the entry tile
   buildSpawnHut() // structure enemies emerge from
 
+  pads.clear()
   for (const c of level.cells) {
     // flat square build pad, lifted clear of the ground so it never z-fights/flickers
     const pad = MeshBuilder.CreateBox('cell', { width: 2.0, height: 0.12, depth: 2.0 }, scene)
     pad.position.set(c.pos.x, 0.1, c.pos.z)
     pad.material = padMat; pad.isPickable = false
-    envMeshes.push(pad)
+    envMeshes.push(pad); pads.set(c.id, pad)
   }
   const keep = assets.instance('base.keep')
   keep.position.set(level.base.x, 0, level.base.z)
@@ -402,7 +423,7 @@ const SHAKE_AMP = 0.28 // peak camera targetScreenOffset; scaled down in third-p
 
 // a projectile homes onto a target enemy (tower shot, damage applied on arrival),
 // flies straight and hits enemies (hero shot), or flies straight at the hero (enemy shot).
-interface Projectile { mesh: TransformNode; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number; trail?: TrailMesh; splashRadius?: number; chainCount?: number; chainRange?: number; arc?: { h: number; d0: number } }
+interface Projectile { mesh: TransformNode; target?: Enemy; dir?: Vector3; ttl: number; damage?: number; slow?: number; vsHero?: boolean; speed?: number; trail?: TrailMesh; splashRadius?: number; chainCount?: number; chainRange?: number; pierce?: number; arc?: { h: number; d0: number } }
 const projectiles: Projectile[] = []
 function killProjectile(p: Projectile) { p.trail?.dispose(); p.mesh.dispose(false, true) }
 const SHOT_SPEED = 18
@@ -428,7 +449,7 @@ function aimProjectile(node: TransformNode, dir: { x: number; y: number; z: numb
 const AMMO_KEY: Record<TowerKind, string> = {
   cannon: 'ammo.cannon', sniper: 'ammo.sniper', slow: 'ammo.slow', mortar: 'ammo.mortar', tesla: 'ammo.tesla',
 }
-function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: TowerKind, damage: number, slow?: number, splashRadius?: number, chainCount?: number, chainRange?: number, lob?: boolean) {
+function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: TowerKind, damage: number, slow?: number, splashRadius?: number, chainCount?: number, chainRange?: number, lob?: boolean, pierce?: number) {
   const ball = spawnModelShot(AMMO_KEY[kind], from.x, 1.2, from.z)
   aimProjectile(ball, { x: target.pos.x - from.x, y: 0.8 - 1.2, z: target.pos.z - from.z })
   burst(scene, 'muzzle', from.x, 1.4, from.z, SHOT_FX[kind]) // muzzle puff
@@ -436,7 +457,7 @@ function fireTowerShot(from: { x: number; z: number }, target: Enemy, kind: Towe
   sfx.shoot()
   // mortar lobs: a parabolic arc instead of a flat homing shot
   const arc = lob ? { h: Math.max(2, Math.min(5, Math.hypot(target.pos.x - from.x, target.pos.z - from.z) * 0.35)), d0: Math.max(0.5, Math.hypot(target.pos.x - from.x, target.pos.z - from.z)) } : undefined
-  projectiles.push({ mesh: ball, target, ttl: 3, damage, slow, trail, splashRadius, chainCount, chainRange, arc })
+  projectiles.push({ mesh: ball, target, ttl: 3, damage, slow, trail, splashRadius, chainCount, chainRange, pierce, arc })
 }
 // actual body radius per enemy kind (capsule radius), for tight hit detection
 const ENEMY_RADIUS: Record<EnemyKind, number> = { normal: 0.4, fast: 0.3, tank: 0.7, rogue: 0.35, brute: 0.6, healer: 0.4, boss: 1.1 }
@@ -489,7 +510,15 @@ function updateHealthBar(e: Enemy) {
     bar.style.cssText = `position:fixed;width:${bw}px;height:${bh}px;background:#300;border:1px solid #000;` +
       'transform:translate(-50%,-50%);pointer-events:none;z-index:4'
     const fill = document.createElement('div'); fill.style.cssText = 'height:100%;width:100%;background:#3c3'
-    bar.appendChild(fill); document.body.appendChild(bar); healthBars.set(e, bar)
+    bar.appendChild(fill)
+    if (e.armor > 0) { // total information: show armor value so the counter is obvious
+      const badge = document.createElement('div')
+      badge.textContent = `🛡${e.armor}`
+      badge.style.cssText = 'position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:4px;' +
+        'font:11px monospace;color:#bcd;white-space:nowrap;text-shadow:0 0 3px #000'
+      bar.appendChild(badge)
+    }
+    document.body.appendChild(bar); healthBars.set(e, bar)
   }
   bar.style.display = 'block'
   bar.style.left = `${rect.left + p.x * rect.width / w}px`
@@ -504,9 +533,9 @@ function clearHealthBars() { for (const b of healthBars.values()) b.remove(); he
 
 const HEAVY: Partial<Record<EnemyKind, boolean>> = { tank: true, brute: true, boss: true }
 // core damage to one enemy (no sfx) — used by the primary hit and by splash/chain
-function damageEnemy(target: Enemy, damage: number, slow?: number) {
+function damageEnemy(target: Enemy, damage: number, slow?: number, pierce = 0) {
   if (!views.has(target)) return
-  target.takeDamage(damage)
+  target.takeDamage(damage, pierce)
   floatText(target.pos.x, 1.7, target.pos.z, `-${damage} (${target.hp}/${target.maxHp})`, '#ffe27a')
   burst(scene, 'impact', target.pos.x, 1.0, target.pos.z, new Color3(1, 0.9, 0.55))
   shake.addTrauma(0.025) // small per-hit; kept low so sustained fire (tesla chains, mortar splash, 3×) doesn't pin the camera and blur the field. Death/boss punches stay big.
@@ -523,18 +552,18 @@ function damageEnemy(target: Enemy, damage: number, slow?: number) {
   }
 }
 // damage applied when a projectile reaches its target; mortar splashes, tesla chains
-function applyHit(target: Enemy, damage: number, slow?: number, aoe?: { splashRadius?: number; chainCount?: number; chainRange?: number }) {
+function applyHit(target: Enemy, damage: number, slow?: number, aoe?: { splashRadius?: number; chainCount?: number; chainRange?: number; pierce?: number }) {
   if (!views.has(target)) return
   sfx.hit()
   const cx = target.pos.x, cz = target.pos.z
-  damageEnemy(target, damage, slow)
+  damageEnemy(target, damage, slow, aoe?.pierce)
   if (aoe?.splashRadius) { // mortar: full damage to everyone else in the blast
     const r2 = aoe.splashRadius * aoe.splashRadius
     burst(scene, 'death', cx, 0.8, cz, new Color3(1, 0.5, 0.2))
     for (const e of [...views.keys()]) {
       if (e === target) continue
       const dx = e.pos.x - cx, dz = e.pos.z - cz
-      if (dx * dx + dz * dz <= r2) damageEnemy(e, damage)
+      if (dx * dx + dz * dz <= r2) damageEnemy(e, damage, undefined, aoe.pierce)
     }
   }
   if (aoe?.chainCount && aoe.chainRange) { // tesla: arc to the nearest few for 60% damage
@@ -544,7 +573,7 @@ function applyHit(target: Enemy, damage: number, slow?: number, aoe?: { splashRa
       .filter((x) => x.d <= aoe.chainRange!)
       .sort((a, b) => a.d - b.d)
       .slice(0, aoe.chainCount)
-    for (const { e } of near) { burst(scene, 'impact', e.pos.x, 1.0, e.pos.z, new Color3(0.7, 0.5, 1)); damageEnemy(e, Math.round(damage * 0.6)) }
+    for (const { e } of near) { burst(scene, 'impact', e.pos.x, 1.0, e.pos.z, new Color3(0.7, 0.5, 1)); damageEnemy(e, Math.round(damage * 0.6), undefined, aoe.pierce) }
   }
 }
 // tesla chain lightning: jagged glowing line between two points, fades fast
@@ -590,7 +619,7 @@ function updateProjectiles(dt: number) {
       const dx = p.target.pos.x - p.mesh.position.x, dz = p.target.pos.z - p.mesh.position.z
       const horiz = Math.hypot(dx, dz)
       if (horiz <= step) {
-        if (p.damage != null) applyHit(p.target, p.damage, p.slow, { splashRadius: p.splashRadius })
+        if (p.damage != null) applyHit(p.target, p.damage, p.slow, { splashRadius: p.splashRadius, pierce: p.pierce })
         killProjectile(p); projectiles.splice(i, 1); continue
       }
       const nx = p.mesh.position.x + dx / horiz * step, nz = p.mesh.position.z + dz / horiz * step
@@ -602,7 +631,7 @@ function updateProjectiles(dt: number) {
       const dir = tgt.subtract(p.mesh.position)
       aimProjectile(p.mesh, dir) // keep the model's nose on the (moving) target
       if (dir.length() <= step) { // arrived — deal damage now
-        if (p.damage != null) applyHit(p.target, p.damage, p.slow, { splashRadius: p.splashRadius, chainCount: p.chainCount, chainRange: p.chainRange })
+        if (p.damage != null) applyHit(p.target, p.damage, p.slow, { splashRadius: p.splashRadius, chainCount: p.chainCount, chainRange: p.chainRange, pierce: p.pierce })
         killProjectile(p); projectiles.splice(i, 1); continue
       }
       p.mesh.position.addInPlace(dir.normalize().scale(step))
@@ -664,7 +693,7 @@ let nextWaveTimer = 0
 let awaitStart = true // first wave of the current map; cleared on the first startNextWave
 // the keep defends itself: auto-fires at the nearest enemy in range (covers the
 // gap while the hero is respawning, and adds a last line of defence)
-const BASE_RANGE = 12, BASE_DMG = 8, BASE_RATE = 1 // units, damage, shots/sec
+const BASE_RANGE = 6, BASE_DMG = 5, BASE_RATE = 1 // keep: short last-ditch line (was 12/8 — covered whole small maps)
 let baseFireTimer = 0
 function startNextWave() {
   if (!started || over || state.phase !== 'build') return
@@ -685,6 +714,7 @@ addEventListener('keydown', (e) => {
     env.setDofEnabled(rig.mode === 'top' && resolveQuality(quality).dof) // toy-diorama DOF top-down only
   }
   if (e.key === 'Enter') startNextWave()
+  if (e.key === 'Escape' && selectedKind) { selectedKind = null; buildMenu.disarm(); deselectTower(); updatePadVisuals(); refreshBuildBanner() }
   if (e.key === ' ') { e.preventDefault(); speed.togglePause(); hud.update() } // Space = pause
   if (e.key === 'm' || e.key === 'M' || e.key === 'ь') audio.toggleMute() // mute toggle
   // Q/E rotate the fixed-iso camera between its 4 preset corners (quality lives in the gear panel now)
@@ -702,13 +732,14 @@ function refreshTowerPanel() {
   const t = selectedTower, s = t.stats, defs = TOWER_DEFS[t.kind]
   const upgradeCost = t.level < defs.length - 1 ? defs[t.level + 1].cost : null
   towerPanel.show(
-    { kind: t.kind, level: t.level, maxLevel: t.maxLevel, damage: s.damage, range: s.range, fireRate: s.fireRate, slow: s.slow, upgradeCost, sellValue: tm.sellValue(t) },
+    { kind: t.kind, level: t.level, maxLevel: t.maxLevel, damage: s.damage, range: s.range, fireRate: s.fireRate, slow: s.slow, pierce: s.pierce, targetMode: t.targetMode, upgradeCost, sellValue: tm.sellValue(t) },
     () => { if (tm.upgrade(t)) { towerViews.get(t)?.sync(); refreshTowerPanel() } else { flash('Не хватает золота'); sfx.deny() } },
     () => {
       tm.sell(t); const v = towerViews.get(t)
       if (v) { env.removeShadowCaster(v.mesh); v.dispose(); towerViews.delete(t) }
-      selectedTower = null; towerPanel.hide(); refreshRings(); sfx.build()
+      selectedTower = null; towerPanel.hide(); refreshRings(); sfx.build(); updatePadVisuals()
     },
+    () => { t.cycleTargetMode(); refreshTowerPanel() },
   )
 }
 function selectTower(t: Tower) { selectedTower = t; refreshRings(); refreshTowerPanel() }
@@ -745,7 +776,7 @@ scene.onPointerMove = (_evt, pick) => {
   updateBuildPreview(pick?.pickedPoint ?? null)
 }
 
-scene.onPointerDown = (_evt, pick) => {
+scene.onPointerDown = (evt, pick) => {
   if (rig.mode !== 'top' || over) return
   if (!pick?.pickedPoint) return
   const clicked = towerAt(pick)
@@ -755,13 +786,23 @@ scene.onPointerDown = (_evt, pick) => {
     if (!cell) { deselectTower(); return }
     if (cell.occupied) { flash('Клетка занята'); sfx.deny(); return }
     const t = tm.build(selectedKind, cell)
-    if (t) { towerViews.set(t, new TowerView(scene, assets, t, towerHooks)); sfx.build() }
-    else { flash('Не хватает золота'); sfx.deny() }
+    if (t) {
+      towerViews.set(t, new TowerView(scene, assets, t, towerHooks)); sfx.build()
+      selectTower(t) // focus jumps to the new tower (panel shows its upgrade/sell)
+      if (!(evt as PointerEvent)?.shiftKey) { selectedKind = null; buildMenu.disarm() } // one-shot; Shift keeps arming
+      updatePadVisuals(); refreshBuildBanner()
+    } else { flash('Не хватает золота'); sfx.deny() }
     return
   }
   if (selectedTower) { deselectTower(); return } // click away to deselect
   heroCtrl.triggerFire() // otherwise the hero shoots toward the click
 }
+// right-click cancels an armed build
+scene.onPointerObservable.add((info) => {
+  if (info.type === PointerEventTypes.POINTERDOWN && (info.event as PointerEvent).button === 2 && selectedKind) {
+    selectedKind = null; buildMenu.disarm(); updatePadVisuals(); refreshBuildBanner()
+  }
+})
 
 scene.onBeforeRenderObservable.add(() => {
   // real time drives FX (shake/particles); sim dt is frozen to 0 during a hitstop
@@ -778,7 +819,7 @@ scene.onBeforeRenderObservable.add(() => {
     for (const e of wm.update(dt)) { const v = new EnemyView(scene, assets, e); env.addShadowCaster(v.mesh); views.set(e, v) }
     for (const e of [...wm.active]) {
       e.update(dt)
-      if (e.reachedBase) { state.damageBase(1); shake.addTrauma(0.5); hitstop.trigger(80); removeHealthBar(e); const rv = views.get(e); if (rv) { env.removeShadowCaster(rv.mesh); rv.dispose() } views.delete(e); wm.remove(e); continue }
+      if (e.reachedBase) { state.damageBase(e.leak); shake.addTrauma(0.5); hitstop.trigger(80); removeHealthBar(e); const rv = views.get(e); if (rv) { env.removeShadowCaster(rv.mesh); rv.dispose() } views.delete(e); wm.remove(e); continue }
       views.get(e)?.sync()
       updateHealthBar(e)
       const atk = e.attack(dt, heroCtrl.pos) // returns damage when in range + off cooldown
@@ -790,21 +831,28 @@ scene.onBeforeRenderObservable.add(() => {
       }
     }
     for (const shot of tm.update(dt, wm.active)) {
+      if (shot.aura) { // slow field: slow every enemy in range this tick, no projectile
+        for (const e of wm.active) {
+          if (e.alive && Math.hypot(e.pos.x - shot.from.x, e.pos.z - shot.from.z) <= shot.aura.range) e.applySlow(shot.aura.slow, 0.3)
+        }
+        continue
+      }
+      const target = shot.target!, damage = shot.damage!
       const firing = [...towerViews.keys()].find((t) => t.pos === shot.from)
       const kind = firing?.kind ?? 'cannon'
       if (kind === 'tesla') {
         // instant chain lightning: bolt tower -> target -> nearest others
         sfx.shoot()
-        zap(shot.from, shot.target.pos, SHOT_FX.tesla, 1.4)
-        damageEnemy(shot.target, shot.damage)
-        let prev = { x: shot.target.pos.x, z: shot.target.pos.z }
-        for (const e of chainTargets(shot.target.pos, shot.chainCount ?? 0, shot.chainRange ?? 0, shot.target)) {
-          zap(prev, e.pos, SHOT_FX.tesla, 1.2); damageEnemy(e, Math.round(shot.damage * 0.6)); prev = { x: e.pos.x, z: e.pos.z }
+        zap(shot.from, target.pos, SHOT_FX.tesla, 1.4)
+        damageEnemy(target, damage)
+        let prev = { x: target.pos.x, z: target.pos.z }
+        for (const e of chainTargets(target.pos, shot.chainCount ?? 0, shot.chainRange ?? 0, target)) {
+          zap(prev, e.pos, SHOT_FX.tesla, 1.2); damageEnemy(e, Math.round(damage * 0.6)); prev = { x: e.pos.x, z: e.pos.z }
         }
       } else if (kind === 'mortar') {
-        fireTowerShot(shot.from, shot.target, kind, shot.damage, shot.slow, shot.splashRadius, undefined, undefined, true) // lobbed
+        fireTowerShot(shot.from, target, kind, damage, shot.slow, shot.splashRadius, undefined, undefined, true, shot.pierce) // lobbed
       } else {
-        fireTowerShot(shot.from, shot.target, kind, shot.damage, shot.slow, shot.splashRadius, shot.chainCount, shot.chainRange)
+        fireTowerShot(shot.from, target, kind, damage, shot.slow, shot.splashRadius, shot.chainCount, shot.chainRange, false, shot.pierce)
       }
       if (firing) towerViews.get(firing)?.kickback() // recoil pulse
     }
@@ -821,7 +869,7 @@ scene.onBeforeRenderObservable.add(() => {
     }
     processHeroShot(heroCtrl.update(dt))
     if (wm.cleared()) {
-      state.addGold(20 + state.wave * 5); state.endWave()
+      state.addGold(15 + state.wave * 3); state.endWave()
       const phaseAfter: string = state.phase
       if (phaseAfter === 'build') { nextWaveTimer = 5; music.setState('calm') } // breather before next wave
     }

@@ -8,9 +8,13 @@ export interface TowerInfo {
   range: number
   fireRate: number
   slow?: number
+  pierce?: number            // sniper: armor ignored
+  targetMode: string         // first | last | strong | weak
   upgradeCost: number | null // null at max level
   sellValue: number
 }
+
+const TARGET_LABEL: Record<string, string> = { first: 'первый', last: 'последний', strong: 'сильный', weak: 'слабый' }
 
 const PANEL = 'background:rgba(16,20,28,0.9);border:1px solid #2a3344;border-radius:8px;'
 const ACCENT = '#ffd24d'
@@ -21,8 +25,10 @@ export class TowerPanel {
   private body!: HTMLDivElement
   private upBtn!: HTMLButtonElement
   private sellBtn!: HTMLButtonElement
+  private targetBtn!: HTMLButtonElement
   private onUpgrade: (() => void) | null = null
   private onSell: (() => void) | null = null
+  private onCycle: (() => void) | null = null
 
   mount() {
     this.root = document.createElement('div')
@@ -38,6 +44,10 @@ export class TowerPanel {
     this.sellBtn.onclick = () => this.onSell?.()
     row.append(this.upBtn, this.sellBtn)
     this.root.appendChild(row)
+    this.targetBtn = this.mkBtn('Цель: —', '#1b2733', '#9cf')
+    this.targetBtn.style.width = '100%'; this.targetBtn.style.marginTop = '6px'
+    this.targetBtn.onclick = () => this.onCycle?.()
+    this.root.appendChild(this.targetBtn)
     document.body.appendChild(this.root)
   }
 
@@ -49,15 +59,18 @@ export class TowerPanel {
     return b
   }
 
-  show(info: TowerInfo, onUpgrade: () => void, onSell: () => void) {
+  show(info: TowerInfo, onUpgrade: () => void, onSell: () => void, onCycleTarget: () => void) {
     this.onUpgrade = onUpgrade
     this.onSell = onSell
+    this.onCycle = onCycleTarget
     const slow = info.slow != null ? `<div>Замедление: <b>${Math.round((1 - info.slow) * 100)}%</b></div>` : ''
+    const pierce = info.pierce ? `<div>Пробитие брони: <b>${info.pierce >= 999 ? '∞' : info.pierce}</b></div>` : ''
     this.body.innerHTML =
       `<div style="color:${ACCENT};font-size:15px;text-transform:uppercase;margin-bottom:6px">${info.kind} · ур.${info.level + 1}</div>` +
       `<div>Урон: <b>${info.damage}</b></div>` +
       `<div>Дальность: <b>${info.range}</b></div>` +
-      `<div>Скорострел.: <b>${info.fireRate.toFixed(1)}/с</b></div>` + slow
+      `<div>Скорострел.: <b>${info.fireRate.toFixed(1)}/с</b></div>` + slow + pierce
+    this.targetBtn.textContent = `Цель: ${TARGET_LABEL[info.targetMode] ?? info.targetMode}`
     if (info.upgradeCost == null) {
       this.upBtn.textContent = 'МАКС'
       this.upBtn.disabled = true
@@ -71,6 +84,6 @@ export class TowerPanel {
     this.root.style.display = 'block'
   }
 
-  hide() { this.root.style.display = 'none'; this.onUpgrade = null; this.onSell = null }
+  hide() { this.root.style.display = 'none'; this.onUpgrade = null; this.onSell = null; this.onCycle = null }
   get visible() { return this.root.style.display === 'block' }
 }

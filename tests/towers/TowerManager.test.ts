@@ -19,7 +19,7 @@ describe('TowerManager', () => {
     const t = tm.build('cannon', cell)
     expect(t).not.toBeNull()
     expect(cell.occupied).toBe(true)
-    expect(state.gold).toBe(150) // 200 - 50
+    expect(state.gold).toBe(160) // 200 - 40 (cannon L1)
     expect(tm.towers.length).toBe(1)
   })
   it('refuses build on occupied cell', () => {
@@ -38,7 +38,7 @@ describe('TowerManager', () => {
     const before = state.gold
     expect(tm.upgrade(t)).toBe(true)
     expect(t.level).toBe(1)
-    expect(state.gold).toBe(before - 40)
+    expect(state.gold).toBe(before - 45) // cannon L2 cost
   })
   it('sell refunds and frees cell', () => {
     const { state, level, tm } = setup()
@@ -48,7 +48,7 @@ describe('TowerManager', () => {
     tm.sell(t)
     expect(cell.occupied).toBe(false)
     expect(tm.towers.length).toBe(0)
-    expect(state.gold).toBe(goldAfterBuild + 25) // 50% of 50
+    expect(state.gold).toBe(goldAfterBuild + 24) // 60% of 40 (cannon L1)
   })
   it('refused build on occupied cell leaves gold unchanged', () => {
     const { state, level, tm } = setup()

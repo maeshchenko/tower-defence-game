@@ -34,9 +34,9 @@ export class TowerManager {
     this.spent.set(t, (this.spent.get(t) ?? 0) + cost)
     return true
   }
-  sellValue(t: Tower): number { return Math.floor((this.spent.get(t) ?? 0) * 0.5) }
+  sellValue(t: Tower): number { return Math.floor((this.spent.get(t) ?? 0) * 0.6) }
   sell(t: Tower): void {
-    const refund = Math.floor((this.spent.get(t) ?? 0) * 0.5)
+    const refund = Math.floor((this.spent.get(t) ?? 0) * 0.6)
     this.state.addGold(refund)
     const cell = this.cellOf.get(t)
     if (cell) cell.occupied = false

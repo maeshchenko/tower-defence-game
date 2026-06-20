@@ -7,7 +7,10 @@ export class Enemy {
   readonly maxHp: number
   readonly bounty: number
   readonly kind: EnemyKind
+  readonly armor: number
+  readonly leak: number
   private follower: PathFollower
+  private _traveled = 0
   private slowFactor = 1
   private slowTimer = 0
   private atk: number
@@ -19,6 +22,7 @@ export class Enemy {
   private healInterval = Infinity
   constructor(def: EnemyDef, path: Vec3[]) {
     this.hp = def.hp; this.maxHp = def.hp; this.bounty = def.bounty; this.kind = def.kind
+    this.armor = def.armor; this.leak = def.leak
     this.atk = def.atk; this.atkRange = def.atkRange
     this.atkInterval = 1 / def.atkRate; this.atkCd = this.atkInterval
     if (def.heal) { this.healDef = def.heal; this.healInterval = 1 / def.heal.rate; this.healCd = this.healInterval }
@@ -28,13 +32,17 @@ export class Enemy {
   get pos(): Vec3 { return this.follower.pos }
   get alive(): boolean { return this.hp > 0 && !this.follower.done }
   get reachedBase(): boolean { return this.follower.done && this.hp > 0 }
+  get traveled(): number { return this._traveled }
   update(dt: number) {
     if (this.hp <= 0) return
     const eff = this.slowFactor
     if (this.slowTimer > 0) { this.slowTimer -= dt; if (this.slowTimer <= 0) this.slowFactor = 1 }
+    const before = this.follower.pos
     this.follower.advance(dt * eff)
+    this._traveled += Math.hypot(this.follower.pos.x - before.x, this.follower.pos.z - before.z)
   }
-  takeDamage(n: number) { this.hp = Math.max(0, this.hp - n) }
+  // flat-armor model: armor subtracts per hit, pierce ignores armor, min 1 (discrete hit)
+  takeDamage(n: number, pierce = 0) { this.hp = Math.max(0, this.hp - Math.max(1, n - Math.max(0, this.armor - pierce))) }
   heal(n: number) { if (this.hp > 0) this.hp = Math.min(this.maxHp, this.hp + n) }
   // a healer pulse when alive + off cooldown; returns the heal amount/range or null
   healPulse(dt: number): { amount: number; range: number } | null {

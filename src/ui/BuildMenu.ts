@@ -27,5 +27,7 @@ export class BuildMenu {
       b.style.outline = b.dataset.kind === this.selected ? '2px solid #ff0' : 'none'
     }
   }
+  get armed(): TowerKind | null { return this.selected }
+  disarm() { this.selected = null; this.onSelect(null); this.render() }
   setVisible(v: boolean) { this.root.style.display = v ? 'flex' : 'none' }
 }
