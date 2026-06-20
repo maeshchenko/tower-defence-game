@@ -3,5 +3,8 @@
   <head><meta charset="utf-8" /><title>Tower Defence</title>
     <style>html,body{margin:0;height:100%;overflow:hidden}#app{width:100vw;height:100vh;display:block}</style>
   </head>
-  <body><canvas id="app"></canvas><script type="module" src="/src/main.ts"></script></body>
+  <body><canvas id="app"></canvas><div id="hud" style="position:fixed;top:8px;left:8px;color:#fff;font-family:monospace;font-size:16px;text-shadow:0 0 3px #000;pointer-events:none"></div>
+<div id="crosshair" style="position:fixed;top:50%;left:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border:2px solid #fff;border-radius:50%;display:none;pointer-events:none"></div>
+<div id="buildmenu" style="position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px"></div>
+<div id="endscreen" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);color:#fff;font-family:monospace;font-size:32px"></div><script type="module" src="/src/main.ts"></script></body>
 </html>

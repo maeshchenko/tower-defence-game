@@ -1,0 +1,139 @@
+import {
+  Scene, TransformNode, AssetContainer, LoadAssetContainerAsync,
+  AnimationGroup, AbstractMesh, StandardMaterial, Color3,
+} from '@babylonjs/core'
+import { MODELS, normalizeScale } from './models'
+
+// Loads each unique GLB once into an AssetContainer, then clones per request.
+export class AssetManager {
+  private containers = new Map<string, AssetContainer>()
+  private scene!: Scene
+
+  async preload(scene: Scene): Promise<void> {
+    this.scene = scene
+    const urls = new Set<string>()
+    for (const def of Object.values(MODELS)) {
+      urls.add(def.url)
+      for (const p of def.parts ?? []) urls.add(p)
+    }
+    await Promise.all([...urls].map(async (url) => {
+      const c = await LoadAssetContainerAsync(url, scene)
+      this.containers.set(url, c)
+    }))
+  }
+
+  // Clone a model (and any stacked parts) under one root, normalized to height.
+  instance(key: string): TransformNode {
+    const def = MODELS[key]
+    if (!def) throw new Error('unknown model key: ' + key)
+    const root = new TransformNode('model:' + key, this.scene)
+    const allGroups: AnimationGroup[] = []
+    const multiPart = (def.parts?.length ?? 0) > 0
+    let yCursor = 0 // stack each successive part on top of the previous one
+    for (const url of [def.url, ...(def.parts ?? [])]) {
+      const node = this.cloneInto(url)
+      node.parent = root
+      if (multiPart) {
+        node.position.y = yCursor
+        node.computeWorldMatrix(true)
+        yCursor += this.measureHeight(node)
+      }
+      const groups = node.metadata?.animationGroups as AnimationGroup[] | undefined
+      if (groups) allGroups.push(...groups)
+    }
+    root.metadata = { animationGroups: allGroups }
+    if (def.footprint) {
+      // scale by XZ footprint (ground/road tiles), then drop so the top sits at tileTopY
+      const ext = this.measureXZ(root)
+      root.scaling.setAll(ext > 0 ? def.footprint / ext : 1)
+      root.computeWorldMatrix(true)
+      root.position.y = (def.tileTopY ?? 0) - this.measureMaxY(root)
+    } else {
+      // bounding boxes are at scale 1 here (root.scaling not yet applied)
+      const ref = def.normalizeBy === 'max' ? this.measureMaxExtent(root) : this.measureHeight(root)
+      root.scaling.setAll(normalizeScale(ref, def.targetHeight))
+    }
+    if (def.yaw) root.rotation.y = def.yaw
+    if (def.tint) this.applyTint(root, def.tint)
+    return root
+  }
+
+  // Paint every child mesh a flat colour (used for Kenney tower/base GLBs whose
+  // colormap atlas mis-samples under the loader). One shared material per instance.
+  private applyTint(root: TransformNode, tint: [number, number, number]): void {
+    const mat = new StandardMaterial('tint:' + root.name, this.scene)
+    mat.diffuseColor = new Color3(tint[0], tint[1], tint[2])
+    mat.specularColor = new Color3(0, 0, 0) // flat, no plastic glare
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) m.material = mat
+  }
+
+  // Returns the independent animation groups captured on this instance.
+  getAnimationGroups(root: TransformNode): AnimationGroup[] {
+    return (root.metadata?.animationGroups as AnimationGroup[] | undefined) ?? []
+  }
+
+  // Loop the 'Idle' animation group on a freshly-instanced root (M1: no T-pose).
+  playIdle(root: TransformNode): void {
+    const groups = (root.metadata?.animationGroups as AnimationGroup[] | undefined) ?? []
+    const idle = groups.find((g) => /idle/i.test(g.name)) ?? groups[0]
+    idle?.start(true)
+  }
+
+  private cloneInto(url: string): TransformNode {
+    const c = this.containers.get(url)
+    if (!c) throw new Error('not preloaded: ' + url)
+    // cloneMaterials=true: each instance owns its materials so dispose(false,true)
+    // on one instance doesn't free shared materials/textures out from under live siblings.
+    const entries = c.instantiateModelsToScene(undefined, true, { doNotInstantiate: true })
+    const node = entries.rootNodes[0] as TransformNode
+    // stash animation groups so playIdle can find them on the returned root
+    node.metadata = { ...(node.metadata ?? {}), animationGroups: entries.animationGroups }
+    return node
+  }
+
+  private measureHeight(root: TransformNode): number {
+    let min = Infinity, max = -Infinity
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      m.computeWorldMatrix(true)
+      const b = m.getBoundingInfo().boundingBox
+      min = Math.min(min, b.minimumWorld.y)
+      max = Math.max(max, b.maximumWorld.y)
+    }
+    return max > min ? max - min : 1
+  }
+
+  // largest of the world-space X/Y/Z extents (for long/flat models like arrows)
+  private measureMaxExtent(root: TransformNode): number {
+    let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity, mnz = Infinity, mxz = -Infinity
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      m.computeWorldMatrix(true)
+      const b = m.getBoundingInfo().boundingBox
+      mnx = Math.min(mnx, b.minimumWorld.x); mxx = Math.max(mxx, b.maximumWorld.x)
+      mny = Math.min(mny, b.minimumWorld.y); mxy = Math.max(mxy, b.maximumWorld.y)
+      mnz = Math.min(mnz, b.minimumWorld.z); mxz = Math.max(mxz, b.maximumWorld.z)
+    }
+    return Math.max(mxx - mnx, mxy - mny, mxz - mnz)
+  }
+
+  // largest of the world-space X and Z extents (for footprint-scaling tiles)
+  private measureXZ(root: TransformNode): number {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      m.computeWorldMatrix(true)
+      const b = m.getBoundingInfo().boundingBox
+      minX = Math.min(minX, b.minimumWorld.x); maxX = Math.max(maxX, b.maximumWorld.x)
+      minZ = Math.min(minZ, b.minimumWorld.z); maxZ = Math.max(maxZ, b.maximumWorld.z)
+    }
+    return Math.max(maxX - minX, maxZ - minZ)
+  }
+
+  // world-space top Y of the (already-scaled) model with the root at y=0
+  private measureMaxY(root: TransformNode): number {
+    let max = -Infinity
+    for (const m of root.getChildMeshes(false) as AbstractMesh[]) {
+      m.computeWorldMatrix(true)
+      max = Math.max(max, m.getBoundingInfo().boundingBox.maximumWorld.y)
+    }
+    return max === -Infinity ? 0 : max
+  }
+}
