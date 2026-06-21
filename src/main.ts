@@ -426,6 +426,7 @@ function loadMap(i: number) {
   // frame the camera to this map's size (small maps zoom in, big ±30 maps zoom out)
   const ext = Math.max(...level.path.flatMap((p) => [Math.abs(p.x), Math.abs(p.z)]))
   rig.setFrameRadius(Math.max(42, Math.min(95, ext * 2.8)))
+  rig.setPanLimit(ext) // arrow keys can drift to the map edge, not past it
   // size the world to THIS map: ground + island + boundary walls + rim all track
   // the map's extent, so small maps don't float on a giant island and big maps are
   // fully walkable (no walls cutting through the middle).

@@ -1,4 +1,4 @@
-import { Scene, ArcRotateCamera, Vector3 } from '@babylonjs/core'
+import { Scene, ArcRotateCamera, Vector3, Camera } from '@babylonjs/core'
 import { Vec3 } from '../core/Vec3'
 import { ISO_BETA, PRESET_ALPHAS, nextPresetAlpha, easeAlpha } from './CameraPresets'
 
@@ -14,9 +14,15 @@ export class CameraRig {
   private topTargetAlpha = PRESET_ALPHAS[0] // top cam eases toward this preset angle
   private introT = 0 // >0 while the establishing zoom-in plays
   private settleRadius = 45 // top-cam resting zoom; set per map to frame its size
+  private panLimit = 20 // arrow-key pan clamp (half-extent of the island), set per map
+  private panKeys = { up: false, down: false, left: false, right: false }
   constructor(private scene: Scene, private canvas: HTMLCanvasElement, heroStart: Vec3) {
     this.topCam = new ArcRotateCamera('top', PRESET_ALPHAS[0], ISO_BETA, 45, Vector3.Zero(), scene)
     this.topCam.attachControl(canvas, true)
+    // true isometric look: orthographic projection (parallel lines, no perspective splay).
+    // radius is still driven by wheel zoom + intro, but now feeds the ortho box (see applyOrtho).
+    this.topCam.mode = Camera.ORTHOGRAPHIC_CAMERA
+    this.topCam.minZ = -200; this.topCam.maxZ = 400 // tilted ortho: widen near/far so nothing clips
     // lock tilt to the iso preset; no free orbit/pan — only wheel zoom remains
     this.topCam.lowerBetaLimit = ISO_BETA; this.topCam.upperBetaLimit = ISO_BETA
     this.topCam.lowerRadiusLimit = 24; this.topCam.upperRadiusLimit = 100
@@ -38,6 +44,34 @@ export class CameraRig {
     // works without holding a button, and re-grabs it after the player hit Esc
     canvas.addEventListener('pointerdown', this.onCanvasPointerDown)
     scene.activeCamera = this.topCam
+    this.applyOrtho()
+    scene.getEngine().onResizeObservable.add(() => this.applyOrtho())
+    // arrow keys pan the top-cam target across the island (top mode only)
+    addEventListener('keydown', this.onPanKey)
+    addEventListener('keyup', this.onPanKey)
+  }
+
+  private onPanKey = (e: KeyboardEvent) => {
+    const down = e.type === 'keydown'
+    switch (e.key) {
+      case 'ArrowUp': this.panKeys.up = down; break
+      case 'ArrowDown': this.panKeys.down = down; break
+      case 'ArrowLeft': this.panKeys.left = down; break
+      case 'ArrowRight': this.panKeys.right = down; break
+      default: return
+    }
+    if (this.mode === 'top') e.preventDefault() // stop page scroll while panning
+  }
+
+  // map the top-cam radius (zoom) + canvas aspect onto the orthographic box.
+  // ortho ignores radius for projection, so we drive the box ourselves each frame.
+  private applyOrtho(): void {
+    const aspect = (this.canvas.width || 1) / (this.canvas.height || 1)
+    const half = this.topCam.radius * 0.5
+    this.topCam.orthoLeft = -half * aspect
+    this.topCam.orthoRight = half * aspect
+    this.topCam.orthoTop = half
+    this.topCam.orthoBottom = -half
   }
 
   private onCanvasPointerDown = () => {
@@ -98,7 +132,30 @@ export class CameraRig {
       this.topCam.radius = this.settleRadius + (this.introT / 1.2) * 18 // start far, settle to frame radius
     }
     this.topCam.alpha = easeAlpha(this.topCam.alpha, this.topTargetAlpha, dt)
+    this.panTopCam(dt)
+    this.applyOrtho() // radius (wheel zoom + intro) feeds the ortho box every frame
   }
+
+  // arrow-key pan: move the top-cam target in the camera's ground plane, clamped to island bounds.
+  private panTopCam(dt: number): void {
+    const a = this.topCam.alpha
+    // ground-plane forward (screen "up") and right, derived from the orbit angle
+    const fx = -Math.cos(a), fz = -Math.sin(a)
+    const rx = Math.sin(a), rz = -Math.cos(a)
+    let dx = 0, dz = 0
+    if (this.panKeys.up) { dx += fx; dz += fz }
+    if (this.panKeys.down) { dx -= fx; dz -= fz }
+    if (this.panKeys.right) { dx += rx; dz += rz }
+    if (this.panKeys.left) { dx -= rx; dz -= rz }
+    if (dx === 0 && dz === 0) return
+    const speed = this.topCam.radius * 0.9 * dt // pan faster when zoomed out
+    const t = this.topCam.target
+    t.x = Math.max(-this.panLimit, Math.min(this.panLimit, t.x + dx * speed))
+    t.z = Math.max(-this.panLimit, Math.min(this.panLimit, t.z + dz * speed))
+  }
+
+  // set how far arrow-key pan can drift from centre (per-map island half-extent)
+  setPanLimit(limit: number): void { this.panLimit = limit }
   setHeroPosition(p: Vec3) { this.syncHero(p) }
   get heroPosition(): Vec3 { const v = this.heroCam.target; return { x: v.x, y: v.y, z: v.z } }
 }
