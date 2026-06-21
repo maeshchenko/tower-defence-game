@@ -1,6 +1,38 @@
 <!doctype html>
 <html>
-  <head><meta charset="utf-8" /><title>Tower Defence</title>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tower Defence — Build, Defend, Survive</title>
+    <meta name="description" content="Defend the path across a 10-map campaign — 100 escalating waves, five tower types, boss battles. Build and upgrade your towers to survive." />
+    <meta name="theme-color" content="#3b2a72" />
+    <link rel="canonical" href="https://maeshchenko.github.io/tower-defence-game/" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Open Graph (Telegram, Facebook, etc.) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tower Defence" />
+    <meta property="og:title" content="Tower Defence — Build, Defend, Survive" />
+    <meta property="og:description" content="Defend the path across a 10-map campaign — 100 escalating waves, five tower types, boss battles. Build and upgrade your towers to survive." />
+    <meta property="og:url" content="https://maeshchenko.github.io/tower-defence-game/" />
+    <meta property="og:image" content="https://maeshchenko.github.io/tower-defence-game/og.png" />
+    <meta property="og:image:secure_url" content="https://maeshchenko.github.io/tower-defence-game/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Tower Defence — isometric scene with stone towers, skeleton enemies and a winding path" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Tower Defence — Build, Defend, Survive" />
+    <meta name="twitter:description" content="A 10-map tower-defence campaign: 100 waves, five tower types, boss battles. Build, upgrade, survive." />
+    <meta name="twitter:image" content="https://maeshchenko.github.io/tower-defence-game/og.png" />
+
     <style>html,body{margin:0;height:100%;overflow:hidden}#app{width:100vw;height:100vh;display:block}</style>
   </head>
   <body><canvas id="app"></canvas><div id="hud" style="position:fixed;top:8px;left:8px;color:#fff;font-family:monospace;font-size:16px;text-shadow:0 0 3px #000;pointer-events:none"></div>
