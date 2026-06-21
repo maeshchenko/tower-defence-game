@@ -1,6 +1,6 @@
-# Tower Defence Game
+# Tower Defense Game
 
-A 3D tower-defence game built with Babylon.js 9, TypeScript, and Vite.
+A 3D tower-defense game built with Babylon.js 9, TypeScript, and Vite.
 
 ## Assets
 

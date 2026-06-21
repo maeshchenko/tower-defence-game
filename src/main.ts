@@ -30,7 +30,8 @@ import { EnemyKind } from './enemies/EnemyTypes'
 import { TowerManager } from './towers/TowerManager'
 import { TowerView, TowerViewHooks } from './towers/TowerView'
 import { Tower } from './towers/Tower'
-import { TowerKind, TOWER_DEFS, TOWER_LABEL } from './towers/TowerTypes'
+import { TowerKind, TOWER_DEFS } from './towers/TowerTypes'
+import { t as tr, towerName } from './i18n'
 import { HUD } from './ui/HUD'
 import { BuildMenu } from './ui/BuildMenu'
 import { Speed } from './ui/Speed'
@@ -49,7 +50,7 @@ const music = new Music(audio)
 
 function showLoading(): HTMLDivElement {
   const el = document.createElement('div')
-  el.textContent = 'Загрузка моделей…'
+  el.textContent = tr('menu.loading')
   el.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
     'background:#10141c;color:#ffd24d;font-family:monospace;font-size:22px;z-index:50'
   document.body.appendChild(el)
@@ -265,7 +266,7 @@ buildMenu.mount()
 // banner that names the armed tower + how to place/cancel; null hides it
 function refreshBuildBanner() {
   const k = buildMenu.armed
-  hud.setBuildBanner(k ? `СТРОИМ: ${TOWER_LABEL[k].toUpperCase()} (${BUILD_COSTS[k]}з) · клик по клетке · ПКМ/Esc отмена · Shift — подряд` : null)
+  hud.setBuildBanner(k ? tr('misc.buildBanner', { tower: towerName(k), cost: BUILD_COSTS[k] }) : null)
 }
 
 const views = new Map<Enemy, EnemyView>()
@@ -754,7 +755,7 @@ function startNextWave() {
     awaitStart = false // first explicit start clears the manual gate
     if (nextWaveTimer > 0) { // reward starting early (skipping the breather)
       const bonus = 8 + state.wave * 2
-      state.addGold(bonus); flash(`+${bonus}з за ранний старт`)
+      state.addGold(bonus); flash(tr('msg.earlyBonus', { bonus }))
     }
     state.startWave(); wm.startWave(state.wave - 1); nextWaveTimer = -1; sfx.waveStart(); music.setState('tense')
   } else if (state.phase === 'wave' && !wm.spawning && state.wave < state.totalWaves) {
@@ -762,7 +763,7 @@ function startNextWave() {
     // Leftover enemies carry over (risk), so chaining waves is an aggressive gold play.
     const bonus = 10 + state.wave * 3
     if (state.callNextWaveEarly()) {
-      state.addGold(bonus); flash(`+${bonus}з досрочная волна!`)
+      state.addGold(bonus); flash(tr('msg.earlyBonus', { bonus }))
       wm.startWave(state.wave - 1); sfx.waveStart(); music.setState('tense')
     }
   }
@@ -781,7 +782,7 @@ addEventListener('keydown', (e) => {
   if (e.shiftKey && /^Digit[0-9]$/.test(e.code) && started && !over) {
     const d = Number(e.code.slice(5)) // Digit3 -> 3
     const idx = d === 0 ? 9 : d - 1
-    if (idx < MAPS.length) { e.preventDefault(); loadMap(idx); flash(`Карта ${idx + 1} (тест)`) }
+    if (idx < MAPS.length) { e.preventDefault(); loadMap(idx); flash(tr('msg.mapTest', { i: idx + 1 })) }
   }
   if (e.key === 'Escape' && selectedKind) { selectedKind = null; buildMenu.disarm(); deselectTower(); updatePadVisuals(); refreshBuildBanner() }
   if (e.key === ' ') { e.preventDefault(); speed.togglePause(); hud.update() } // Space = pause
@@ -802,7 +803,7 @@ function refreshTowerPanel() {
   const upgradeCost = t.level < defs.length - 1 ? defs[t.level + 1].cost : null
   towerPanel.show(
     { kind: t.kind, level: t.level, maxLevel: t.maxLevel, damage: s.damage, range: s.range, fireRate: s.fireRate, slow: s.slow, pierce: s.pierce, targetMode: t.targetMode, upgradeCost, sellValue: tm.sellValue(t) },
-    () => { if (tm.upgrade(t)) { towerViews.get(t)?.sync(); refreshTowerPanel() } else { flash('Не хватает золота'); sfx.deny() } },
+    () => { if (tm.upgrade(t)) { towerViews.get(t)?.sync(); refreshTowerPanel() } else { flash(tr('msg.noGold')); sfx.deny() } },
     () => {
       tm.sell(t); const v = towerViews.get(t)
       if (v) { env.removeShadowCaster(v.mesh); v.dispose(); towerViews.delete(t) }
@@ -854,14 +855,14 @@ scene.onPointerDown = (evt, pick) => {
   if (selectedKind) {
     const cell = level.cellAt(pick.pickedPoint.x, pick.pickedPoint.z, 2)
     if (!cell) { deselectTower(); return }
-    if (cell.occupied) { flash('Клетка занята'); sfx.deny(); return }
+    if (cell.occupied) { flash(tr('msg.cellOccupied')); sfx.deny(); return }
     const t = tm.build(selectedKind, cell)
     if (t) {
       towerViews.set(t, new TowerView(scene, assets, t, towerHooks)); sfx.build()
       selectTower(t) // focus jumps to the new tower (panel shows its upgrade/sell)
       if (!(evt as PointerEvent)?.shiftKey) { selectedKind = null; buildMenu.disarm() } // one-shot; Shift keeps arming
       updatePadVisuals(); refreshBuildBanner()
-    } else { flash('Не хватает золота'); sfx.deny() }
+    } else { flash(tr('msg.noGold')); sfx.deny() }
     return
   }
   if (selectedTower) { deselectTower(); return } // click away to deselect
@@ -956,7 +957,7 @@ scene.onBeforeRenderObservable.add(() => {
   const off = shake.step(realDt, rig.mode === 'hero' ? SHAKE_AMP * 0.4 : SHAKE_AMP)
   const activeCam = scene.activeCamera as { targetScreenOffset?: { set(x: number, y: number): void } } | null
   activeCam?.targetScreenOffset?.set(off.x, off.y)
-  mapInfo.textContent = `Карта ${mapIndex + 1}/${MAPS.length}`
+  mapInfo.textContent = tr('misc.mapIndicator', { i: mapIndex + 1, total: MAPS.length })
   const showPreview = !over && state.phase === 'build' && (awaitStart || nextWaveTimer > 0)
   // Infinity countdown tells the HUD to show "press Enter" instead of a ticking timer
   hud.setWavePreview(showPreview ? wm.peek(state.wave).map((g) => ({ kind: g.kind, count: g.count })) : null, state.wave + 1, awaitStart ? Infinity : nextWaveTimer)
@@ -972,9 +973,9 @@ document.body.appendChild(mapInfo)
 const legend = document.createElement('div')
 legend.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font-family:monospace;font-size:13px;line-height:1.5;text-align:right;text-shadow:0 0 3px #000;pointer-events:none'
 legend.innerHTML =
-  `выбери башню → клик по клетке — строить<br>клик по башне — инфо · улучшить · продать<br>` +
-  `без выбора: клик = выстрел героя · WASD — бег<br>` +
-  `Space — пауза · 1/2/3× — скорость · Enter — волна<br>Tab — вид · Q/E — поворот · M — звук`
+  `${tr('legend.build')}<br>${tr('legend.tower')}<br>` +
+  `${tr('legend.hero')}<br>` +
+  `${tr('legend.speed')}<br>${tr('legend.camera')}`
 document.body.appendChild(legend)
 
 // camera rotate buttons (top-down only)
@@ -1005,12 +1006,12 @@ function showTitle() {
   ov.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;' +
     'justify-content:center;gap:20px;background:rgba(16,20,28,0.93);z-index:60;font-family:monospace;color:#fff'
   const title = document.createElement('div')
-  title.textContent = 'TOWER DEFENCE'
+  title.textContent = tr('menu.title')
   title.style.cssText = 'font-size:48px;font-weight:bold;letter-spacing:4px;color:#ffd24d;text-shadow:0 0 14px #000'
   const sub = document.createElement('div')
-  sub.textContent = 'Защити крепость · WASD — бег · Tab — вид · клик — строить/стрелять · M — звук'
+  sub.textContent = tr('menu.subtitle')
   sub.style.cssText = 'font-size:15px;opacity:0.85;text-align:center;max-width:640px'
-  const play = menuButton('Играть')
+  const play = menuButton(tr('menu.play'))
   play.onclick = () => { started = true; ov.remove(); audio.unlock(); music.start(); music.setState('calm'); sfx.waveStart() } // first gesture unlocks audio + starts music
   ov.append(title, sub, play)
   document.body.appendChild(ov)
@@ -1020,7 +1021,7 @@ function showEndButtons() {
   const host = document.getElementById('endscreen')
   if (!host || host.querySelector('button')) return
   host.style.flexDirection = 'column'
-  const restart = menuButton('Заново')
+  const restart = menuButton(tr('menu.playAgain'))
   restart.style.marginTop = '24px'
   restart.onclick = () => location.reload()
   host.appendChild(restart)

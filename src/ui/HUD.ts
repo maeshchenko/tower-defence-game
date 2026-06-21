@@ -2,11 +2,11 @@ import { GameState } from '../core/GameState'
 import { HeroState } from '../hero/HeroState'
 import { Speed } from './Speed'
 import { EnemyKind } from '../enemies/EnemyTypes'
+import { t, enemyName } from '../i18n'
 
 const ACCENT = '#ffd24d'
 const PANEL = 'background:rgba(16,20,28,0.82);border:1px solid #2a3344;border-radius:8px;'
 const ENEMY_ICON: Record<EnemyKind, string> = { normal: '🪖', fast: '🏃', tank: '🛡️', rogue: '🗡️', brute: '🪓', healer: '➕', boss: '💀' }
-const ENEMY_LABEL: Record<EnemyKind, string> = { normal: 'обычные', fast: 'быстрые', tank: 'танки', rogue: 'разбойники', brute: 'громилы', healer: 'лекари', boss: 'БОСС' }
 
 // HUD owns the stats card, the pause/speed bar and the next-wave preview. It reads
 // GameState/HeroState/Speed each frame; the speed buttons drive the Speed controller.
@@ -57,7 +57,7 @@ export class HUD {
 
     // pause banner (center)
     this.pauseTag = document.createElement('div')
-    this.pauseTag.textContent = '⏸ ПАУЗА'
+    this.pauseTag.textContent = t('hud.pause')
     this.pauseTag.style.cssText = 'position:fixed;top:46%;left:50%;transform:translate(-50%,-50%);' +
       `font-family:monospace;font-size:40px;font-weight:bold;color:${ACCENT};text-shadow:0 0 16px #000;` +
       'z-index:6;display:none;pointer-events:none;letter-spacing:3px'
@@ -91,8 +91,8 @@ export class HUD {
     this.stats.innerHTML =
       `<div>💰 <b style="color:${ACCENT}">${this.state.gold}</b></div>` +
       `<div>❤ <b>${this.state.lives}</b></div>` +
-      `<div>🌊 Волна <b>${this.state.wave}/${this.state.totalWaves}</b></div>` +
-      `<div>🦸 ${this.hero.alive ? this.bar(hp / 100, hpColor) + ` ${hp}` : '<span style="color:#c33">респаун…</span>'}</div>`
+      `<div>${t('hud.wave')} <b>${this.state.wave}/${this.state.totalWaves}</b></div>` +
+      `<div>🦸 ${this.hero.alive ? this.bar(hp / 100, hpColor) + ` ${hp}` : `<span style="color:#c33">${t('hud.respawn')}</span>`}</div>`
 
     // highlight the active speed button (pause shown when paused)
     for (const [key, b] of Object.entries(this.speedBtns)) {
@@ -106,17 +106,17 @@ export class HUD {
   // show what the upcoming wave contains during the build countdown; null hides it
   setWavePreview(entries: { kind: EnemyKind; count: number }[] | null, waveNumber: number, countdown: number) {
     if (!entries || entries.length === 0) { this.preview.style.display = 'none'; return }
-    const parts = entries.map((e) => `${ENEMY_ICON[e.kind]}×${e.count} ${ENEMY_LABEL[e.kind]}`).join('  ·  ')
+    const parts = entries.map((e) => `${ENEMY_ICON[e.kind]}×${e.count} ${enemyName(e.kind)}`).join('  ·  ')
     this.preview.style.display = 'block'
     // non-finite countdown = first wave of the map: wait for an explicit start, no timer
     const when = isFinite(countdown)
-      ? `через ${Math.ceil(countdown)}с <span style="opacity:.7">(Enter — раньше)</span>`
-      : `<span style="opacity:.95;color:${ACCENT}">Нажми Enter — старт</span>`
-    this.preview.innerHTML = `<b style="color:${ACCENT}">Волна ${waveNumber}</b> ${when}<br>${parts}`
+      ? `${t('hud.nextWave', { n: Math.ceil(countdown) })} <span style="opacity:.7">(${t('hud.startNow')})</span>`
+      : `<span style="opacity:.95;color:${ACCENT}">${t('hud.pressEnter')}</span>`
+    this.preview.innerHTML = `<b style="color:${ACCENT}">${t('hud.waveHeader', { n: waveNumber })}</b> ${when}<br>${parts}`
   }
 
   showEnd(victory: boolean) {
     this.end.style.display = 'flex'
-    this.end.textContent = victory ? 'VICTORY' : 'GAME OVER'
+    this.end.textContent = victory ? t('hud.victory') : t('hud.defeat')
   }
 }

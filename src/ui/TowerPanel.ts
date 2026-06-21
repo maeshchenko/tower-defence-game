@@ -1,4 +1,5 @@
-import { TowerKind, TOWER_LABEL } from '../towers/TowerTypes'
+import { TowerKind } from '../towers/TowerTypes'
+import { t, towerName, targetName } from '../i18n'
 
 export interface TowerInfo {
   kind: TowerKind
@@ -13,8 +14,6 @@ export interface TowerInfo {
   upgradeCost: number | null // null at max level
   sellValue: number
 }
-
-const TARGET_LABEL: Record<string, string> = { first: 'первый', last: 'последний', strong: 'сильный', weak: 'слабый' }
 
 const PANEL = 'background:rgba(16,20,28,0.9);border:1px solid #2a3344;border-radius:8px;'
 const ACCENT = '#ffd24d'
@@ -38,13 +37,13 @@ export class TowerPanel {
     this.root.appendChild(this.body)
     const row = document.createElement('div')
     row.style.cssText = 'display:flex;gap:6px;margin-top:10px'
-    this.upBtn = this.mkBtn('Улучшить', '#1b3320', '#9f9')
-    this.sellBtn = this.mkBtn('Продать', '#331b1b', '#f99')
+    this.upBtn = this.mkBtn(t('panel.upgrade'), '#1b3320', '#9f9')
+    this.sellBtn = this.mkBtn(t('panel.sell'), '#331b1b', '#f99')
     this.upBtn.onclick = () => this.onUpgrade?.()
     this.sellBtn.onclick = () => this.onSell?.()
     row.append(this.upBtn, this.sellBtn)
     this.root.appendChild(row)
-    this.targetBtn = this.mkBtn('Цель: —', '#1b2733', '#9cf')
+    this.targetBtn = this.mkBtn(`${t('panel.target')} —`, '#1b2733', '#9cf')
     this.targetBtn.style.width = '100%'; this.targetBtn.style.marginTop = '6px'
     this.targetBtn.onclick = () => this.onCycle?.()
     this.root.appendChild(this.targetBtn)
@@ -63,24 +62,24 @@ export class TowerPanel {
     this.onUpgrade = onUpgrade
     this.onSell = onSell
     this.onCycle = onCycleTarget
-    const slow = info.slow != null ? `<div>Замедление: <b>${Math.round((1 - info.slow) * 100)}%</b></div>` : ''
-    const pierce = info.pierce ? `<div>Пробитие брони: <b>${info.pierce >= 999 ? '∞' : info.pierce}</b></div>` : ''
+    const slow = info.slow != null ? `<div>${t('panel.slow')} <b>${Math.round((1 - info.slow) * 100)}%</b></div>` : ''
+    const pierce = info.pierce ? `<div>${t('panel.ignoreArmor')} <b>${info.pierce >= 999 ? '∞' : info.pierce}</b></div>` : ''
     this.body.innerHTML =
-      `<div style="color:${ACCENT};font-size:15px;text-transform:uppercase;margin-bottom:6px">${TOWER_LABEL[info.kind]} · ур.${info.level + 1}</div>` +
-      `<div>Урон: <b>${info.damage}</b></div>` +
-      `<div>Дальность: <b>${info.range}</b></div>` +
-      `<div>Скорострел.: <b>${info.fireRate.toFixed(1)}/с</b></div>` + slow + pierce
-    this.targetBtn.textContent = `Цель: ${TARGET_LABEL[info.targetMode] ?? info.targetMode}`
+      `<div style="color:${ACCENT};font-size:15px;text-transform:uppercase;margin-bottom:6px">${towerName(info.kind)} · ${t('panel.level', { n: info.level + 1 })}</div>` +
+      `<div>${t('panel.damage')} <b>${info.damage}</b></div>` +
+      `<div>${t('panel.range')} <b>${info.range}</b></div>` +
+      `<div>${t('panel.fireRate')} <b>${info.fireRate.toFixed(1)}/с</b></div>` + slow + pierce
+    this.targetBtn.textContent = `${t('panel.target')} ${targetName(info.targetMode)}`
     if (info.upgradeCost == null) {
-      this.upBtn.textContent = 'МАКС'
+      this.upBtn.textContent = t('panel.max')
       this.upBtn.disabled = true
       this.upBtn.style.opacity = '0.5'
     } else {
-      this.upBtn.textContent = `Улучшить ${info.upgradeCost}`
+      this.upBtn.textContent = `${t('panel.upgrade')} ${info.upgradeCost}`
       this.upBtn.disabled = false
       this.upBtn.style.opacity = '1'
     }
-    this.sellBtn.textContent = `Продать ${info.sellValue}`
+    this.sellBtn.textContent = `${t('panel.sell')} ${info.sellValue}`
     this.root.style.display = 'block'
   }
 
